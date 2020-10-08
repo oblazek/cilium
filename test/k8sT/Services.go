@@ -50,28 +50,39 @@ var _ = Describe("K8sServicesTest", func() {
 		outsideIP       string
 		privateIface    string
 
-		demoPolicyL7 string
-
 		dualStackSupportEnabled bool
-
-		defaultOpts = map[string]string{}
 	)
-
-	getOpts := func(opts map[string]string) map[string]string {
-		for key, value := range defaultOpts {
-			if _, ok := opts[key]; !ok {
-				opts[key] = value
-			}
-		}
-
-		return opts
-	}
 
 	BeforeAll(func() {
 		var err error
 		kubectl = helpers.CreateKubectl(helpers.K8s1VMName(), logger)
 
 		dualStackSupportEnabled = helpers.DualStackSupported()
+		if dualStackSupportEnabled && helpers.RunsWithKubeProxy() {
+			// This is a fix required for kube-proxy when running in dual-stack mode.
+			// Sometimes there is a condition where kube-proxy repeatedly fails as it is not able
+			// to find KUBE-MARK-DROP iptables chain for IPv6 which should be created by kubelet.
+			// Error occurred at line: 79
+			// Try `ip6tables-restore -h' or 'ip6tables-restore --help' for more information.
+			// )
+			// I1013 15:26:18.762727       1 proxier.go:850] Sync failed; retrying in 30s
+			// E1013 15:26:18.780765       1 proxier.go:1570] Failed to execute iptables-restore: exit status 2 (ip6tables-restore v1.8.3 (legacy):
+			// Couldn't load target `KUBE-MARK-DROP':No such file or directory
+			//
+			// This was fixed upstream for IPVS mode but still fails for iptables mode in our CI.
+			// For more information see kubernetes/kubernetes issues #80462 #84422 #85527
+			kubeproxyPods, err := kubectl.GetPodNames("kube-system", "k8s-app=kube-proxy")
+			if err == nil {
+				for _, pod := range kubeproxyPods {
+					res := kubectl.ExecPodCmd("kube-system", pod, "ip6tables -t nat -N KUBE-MARK-DROP")
+					if !res.WasSuccessful() && !strings.Contains(res.CombineOutput().String(), "Chain already exists") {
+						GinkgoPrint("Error adding KUBE-MARK-DROP chain: %s, skipping KUBE-MARK-DROP ensure tests might fail.", res.CombineOutput().String())
+					}
+				}
+			} else {
+				GinkgoPrint("Error getting kube-proxy pods: %s, skipping KUBE-MARK-DROP ensure tests might fail.", err)
+			}
+		}
 
 		k8s1NodeName, k8s1IP = kubectl.GetNodeInfo(helpers.K8s1)
 		k8s2NodeName, k8s2IP = kubectl.GetNodeInfo(helpers.K8s2)
@@ -83,15 +94,7 @@ var _ = Describe("K8sServicesTest", func() {
 		Expect(err).Should(BeNil(), "Cannot determine private iface")
 
 		ciliumFilename = helpers.TimestampFilename("cilium.yaml")
-		if dualStackSupportEnabled {
-			defaultOpts["global.devices"] = fmt.Sprintf(`'{%s,%s}'`, privateIface, helpers.SecondaryIface)
-			defaultOpts["config.ipam"] = "kubernetes"
-			defaultOpts["global.k8s.requireIPv4PodCIDR"] = "true"
-			defaultOpts["global.k8s.requireIPv6PodCIDR"] = "true"
-		}
-		DeployCiliumOptionsAndDNS(kubectl, ciliumFilename, defaultOpts)
-
-		demoPolicyL7 = helpers.ManifestGet(kubectl.BasePath(), "l7-policy-demo.yaml")
+		DeployCiliumAndDNS(kubectl, ciliumFilename)
 	})
 
 	AfterFailed(func() {
@@ -121,7 +124,7 @@ var _ = Describe("K8sServicesTest", func() {
 
 	manualIPv6TestingNotRequired := func(f func() bool) func() bool {
 		return func() bool {
-			return helpers.DualStackSupported() && f()
+			return helpers.DualStackSupported() || f()
 		}
 	}
 
@@ -270,15 +273,16 @@ var _ = Describe("K8sServicesTest", func() {
 
 		BeforeAll(func() {
 			demoYAML = helpers.ManifestGet(kubectl.BasePath(), "demo.yaml")
-			demoYAMLDualStack = helpers.ManifestGet(kubectl.BasePath(), "demo_dualstack.yaml")
 			echoSVCYAML = helpers.ManifestGet(kubectl.BasePath(), "echo-svc.yaml")
-			echoSVCYAMLDualStack = helpers.ManifestGet(kubectl.BasePath(), "echo-svc_dualstack.yaml")
 
 			res := kubectl.ApplyDefault(demoYAML)
 			Expect(res).Should(helpers.CMDSuccess(), "unable to apply %s", demoYAML)
 			res = kubectl.ApplyDefault(echoSVCYAML)
 			Expect(res).Should(helpers.CMDSuccess(), "unable to apply %s", echoSVCYAML)
 			if dualStackSupportEnabled {
+				demoYAMLDualStack = helpers.ManifestGet(kubectl.BasePath(), "demo_dualstack.yaml")
+				echoSVCYAMLDualStack = helpers.ManifestGet(kubectl.BasePath(), "echo-svc_dualstack.yaml")
+
 				res = kubectl.ApplyDefault(demoYAMLDualStack)
 				Expect(res).Should(helpers.CMDSuccess(), "unable to apply %s", demoYAMLDualStack)
 
@@ -648,8 +652,12 @@ var _ = Describe("K8sServicesTest", func() {
 			demoYAML          string
 			demoYAMLDualStack string
 
+			primaryK8s1IPv6, primaryK8s2IPv6 string
+
 			secondaryK8s1IPv4, secondaryK8s2IPv4 string
 			secondaryK8s1IPv6, secondaryK8s2IPv6 string
+
+			demoPolicyL7 string
 		)
 
 		waitPodsDs := func() {
@@ -682,21 +690,38 @@ var _ = Describe("K8sServicesTest", func() {
 
 		BeforeAll(func() {
 			demoYAML = helpers.ManifestGet(kubectl.BasePath(), "demo_ds.yaml")
-			demoYAMLDualStack = helpers.ManifestGet(kubectl.BasePath(), "demo_ds_dualstack.yaml")
+
+			DeployCiliumAndDNS(kubectl, ciliumFilename)
 
 			res := kubectl.ApplyDefault(demoYAML)
 			Expect(res).Should(helpers.CMDSuccess(), "Unable to apply %s", demoYAML)
 
-			secondaryK8s1IPv4 = getIPv4AddrForIface(k8s1NodeName, helpers.SecondaryIface)
-			secondaryK8s2IPv4 = getIPv4AddrForIface(k8s2NodeName, helpers.SecondaryIface)
+			if helpers.GetCurrentIntegration() == "" {
+				primaryK8s1IPv6 = getIPv6AddrForIface(k8s1NodeName, privateIface)
+				primaryK8s2IPv6 = getIPv6AddrForIface(k8s2NodeName, privateIface)
 
-			if dualStackSupportEnabled {
-				res = kubectl.ApplyDefault(demoYAMLDualStack)
-				Expect(res).Should(helpers.CMDSuccess(), "Unable to apply %s", demoYAMLDualStack)
+				// If there is no integration we assume that these are running in vagrant environment
+				// so have a secondary interface with both IPv6 and IPv4 addresses.
+				secondaryK8s1IPv4 = getIPv4AddrForIface(k8s1NodeName, helpers.SecondaryIface)
+				secondaryK8s2IPv4 = getIPv4AddrForIface(k8s2NodeName, helpers.SecondaryIface)
 
 				secondaryK8s1IPv6 = getIPv6AddrForIface(k8s1NodeName, helpers.SecondaryIface)
 				secondaryK8s2IPv6 = getIPv6AddrForIface(k8s2NodeName, helpers.SecondaryIface)
 			}
+
+			if dualStackSupportEnabled {
+				demoYAMLDualStack = helpers.ManifestGet(kubectl.BasePath(), "demo_ds_dualstack.yaml")
+
+				res = kubectl.ApplyDefault(demoYAMLDualStack)
+				Expect(res).Should(helpers.CMDSuccess(), "Unable to apply %s", demoYAMLDualStack)
+			}
+
+			By(`Connectivity config:: DualStackSupportEnabled: %v
+Primary Interface %s   :: IPv4: (%s, %s), IPv6: (%s, %s)
+Secondary Interface %s :: IPv4: (%s, %s), IPv6: (%s, %s)`, dualStackSupportEnabled, privateIface, k8s1IP, k8s2IP, primaryK8s1IPv6, primaryK8s2IPv6,
+				helpers.SecondaryIface, secondaryK8s1IPv4, secondaryK8s2IPv4, secondaryK8s1IPv6, secondaryK8s2IPv6)
+
+			demoPolicyL7 = helpers.ManifestGet(kubectl.BasePath(), "l7-policy-demo.yaml")
 			waitPodsDs()
 		})
 
@@ -952,17 +977,13 @@ var _ = Describe("K8sServicesTest", func() {
 				testURLsFromPods = append(testURLsFromPods,
 					getHTTPLink(v6Data.Spec.ClusterIP, v6Data.Spec.Ports[0].Port),
 					getTFTPLink(v6Data.Spec.ClusterIP, v6Data.Spec.Ports[1].Port),
+
+					getHTTPLink(primaryK8s1IPv6, v6Data.Spec.Ports[0].NodePort),
+					getTFTPLink(primaryK8s1IPv6, v6Data.Spec.Ports[1].NodePort),
+
+					getHTTPLink(primaryK8s2IPv6, v6Data.Spec.Ports[0].NodePort),
+					getTFTPLink(primaryK8s2IPv6, v6Data.Spec.Ports[1].NodePort),
 				)
-
-				if testSecondaryNodePortIP {
-					testURLsFromPods = append(testURLsFromPods,
-						getHTTPLink(secondaryK8s1IPv6, data.Spec.Ports[0].NodePort),
-						getTFTPLink(secondaryK8s1IPv6, data.Spec.Ports[1].NodePort),
-
-						getHTTPLink(secondaryK8s2IPv6, data.Spec.Ports[0].NodePort),
-						getTFTPLink(secondaryK8s2IPv6, data.Spec.Ports[1].NodePort),
-					)
-				}
 			}
 
 			// There are tested from pods running in the host net namespace
@@ -993,6 +1014,12 @@ var _ = Describe("K8sServicesTest", func() {
 				testURLsFromHosts = append(testURLsFromHosts,
 					getHTTPLink(v6Data.Spec.ClusterIP, v6Data.Spec.Ports[0].Port),
 					getTFTPLink(v6Data.Spec.ClusterIP, v6Data.Spec.Ports[1].Port),
+
+					getHTTPLink(primaryK8s1IPv6, v6Data.Spec.Ports[0].NodePort),
+					getTFTPLink(primaryK8s1IPv6, v6Data.Spec.Ports[1].NodePort),
+
+					getHTTPLink(primaryK8s2IPv6, v6Data.Spec.Ports[0].NodePort),
+					getTFTPLink(primaryK8s2IPv6, v6Data.Spec.Ports[1].NodePort),
 				)
 			}
 
@@ -1042,6 +1069,16 @@ var _ = Describe("K8sServicesTest", func() {
 
 					getHTTPLink(k8s2IP, data.Spec.Ports[0].NodePort),
 					getTFTPLink(k8s2IP, data.Spec.Ports[1].NodePort),
+				}
+
+				if dualStackSupportEnabled {
+					testURLsFromOutside = append(testURLsFromOutside,
+						getHTTPLink(primaryK8s1IPv6, v6Data.Spec.Ports[0].NodePort),
+						getTFTPLink(primaryK8s1IPv6, v6Data.Spec.Ports[1].NodePort),
+
+						getHTTPLink(primaryK8s2IPv6, v6Data.Spec.Ports[0].NodePort),
+						getTFTPLink(primaryK8s2IPv6, v6Data.Spec.Ports[1].NodePort),
+					)
 				}
 
 				if testSecondaryNodePortIP {
@@ -1175,7 +1212,7 @@ var _ = Describe("K8sServicesTest", func() {
 				nodePortService: k8s1IP,
 			}
 			if dualStackSupportEnabled {
-				services[nodePortServiceIPv6] = secondaryK8s1IPv6
+				services[nodePortServiceIPv6] = primaryK8s1IPv6
 			}
 
 			for svcName, nodeIP := range services {
@@ -1247,7 +1284,7 @@ var _ = Describe("K8sServicesTest", func() {
 				nodePortService: k8s1IP,
 			}
 			if dualStackSupportEnabled {
-				services[nodePortServiceIPv6] = secondaryK8s1IPv6
+				services[nodePortServiceIPv6] = primaryK8s1IPv6
 			}
 
 			for svcName, nodeIP := range services {
@@ -1300,7 +1337,7 @@ var _ = Describe("K8sServicesTest", func() {
 				serviceAffinityServiceIPv4: k8s1IP,
 			}
 			if dualStackSupportEnabled {
-				services[serviceAffinityServiceIPv6] = secondaryK8s1IPv6
+				services[serviceAffinityServiceIPv6] = primaryK8s1IPv6
 			}
 
 			for svcName, nodeIP := range services {
@@ -1418,8 +1455,8 @@ var _ = Describe("K8sServicesTest", func() {
 			}
 			if dualStackSupportEnabled {
 				services = append(services, nodeInfo{
-					secondaryK8s1IPv6,
-					secondaryK8s2IPv6,
+					primaryK8s1IPv6,
+					primaryK8s2IPv6,
 					localNodePortSvcIPv6,
 					localNodePortK8s2SvcIpv6,
 				})
@@ -1460,6 +1497,7 @@ var _ = Describe("K8sServicesTest", func() {
 				}
 
 				// This does not work for IPv6 services.
+				// TODO(fristonio): Fix and remove this condition.
 				if node.localSvc != localNodePortSvcIPv6 {
 					// Local requests should be load-balanced on kube-proxy 1.15+.
 					// See kubernetes/kubernetes#77523 for the PR which introduced this
@@ -1530,11 +1568,11 @@ var _ = Describe("K8sServicesTest", func() {
 			ExpectWithOffset(1, res.Stdout()).ShouldNot(BeEmpty(), "No HostPort entry for "+k8s2IP+":"+tftpHostPortStr)
 
 			if dualStackSupportEnabled {
-				res := kubectl.CiliumExecContext(context.TODO(), pod, "cilium service list | grep ["+secondaryK8s2IPv6+"]:"+httpHostPortStr+" | grep HostPort")
-				ExpectWithOffset(1, res.Stdout()).ShouldNot(BeEmpty(), "No HostPort entry for ["+secondaryK8s2IPv6+"]:"+httpHostPortStr)
+				res := kubectl.CiliumExecContext(context.TODO(), pod, "cilium service list | grep ["+primaryK8s2IPv6+"]:"+httpHostPortStr+" | grep HostPort")
+				ExpectWithOffset(1, res.Stdout()).ShouldNot(BeEmpty(), "No HostPort entry for ["+primaryK8s2IPv6+"]:"+httpHostPortStr)
 
-				res = kubectl.CiliumExecContext(context.TODO(), pod, "cilium service list | grep ["+secondaryK8s2IPv6+"]:"+tftpHostPortStr+" | grep HostPort")
-				ExpectWithOffset(1, res.Stdout()).ShouldNot(BeEmpty(), "No HostPort entry for ["+secondaryK8s2IPv6+"]:"+tftpHostPortStr)
+				res = kubectl.CiliumExecContext(context.TODO(), pod, "cilium service list | grep ["+primaryK8s2IPv6+"]:"+tftpHostPortStr+" | grep HostPort")
+				ExpectWithOffset(1, res.Stdout()).ShouldNot(BeEmpty(), "No HostPort entry for ["+primaryK8s2IPv6+"]:"+tftpHostPortStr)
 			}
 
 			// Cluster-internal connectivity via node address to HostPort
@@ -1579,8 +1617,8 @@ var _ = Describe("K8sServicesTest", func() {
 
 			if dualStackSupportEnabled {
 				// Cluster-internal connectivity via node address to HostPort
-				httpURL = getHTTPLink(secondaryK8s2IPv6, httpHostPort)
-				tftpURL = getTFTPLink(secondaryK8s2IPv6, tftpHostPort)
+				httpURL = getHTTPLink(primaryK8s2IPv6, httpHostPort)
+				tftpURL = getTFTPLink(primaryK8s2IPv6, tftpHostPort)
 
 				// ... from same node
 				testCurlFromPodInHostNetNS(httpURL, count, 0, k8s2NodeName)
@@ -1722,15 +1760,15 @@ var _ = Describe("K8sServicesTest", func() {
 			}
 		})
 
-		SkipContextIf(manualIPv6TestingNotRequired(helpers.RunsWithoutKubeProxy), "IPv6 Connectivity", func() {
+		SkipContextIf(manualIPv6TestingNotRequired(helpers.RunsWithKubeProxy), "IPv6 Connectivity", func() {
 			testDSIPv6 := "fd03::310"
 
 			BeforeAll(func() {
 				// Install rules for testds-service (demo_ds.yaml)
 				httpBackends := ciliumIPv6Backends("-l k8s:zgroup=testDS,k8s:io.kubernetes.pod.namespace=default", "80")
-				ciliumAddService(31080, "tcp", net.JoinHostPort(testDSIPv6, "80"), httpBackends, "ClusterIP", "Cluster")
+				ciliumAddService(31080, net.JoinHostPort(testDSIPv6, "80"), httpBackends, "ClusterIP", "Cluster")
 				tftpBackends := ciliumIPv6Backends("-l k8s:zgroup=testDS,k8s:io.kubernetes.pod.namespace=default", "69")
-				ciliumAddService(31069, "udp", net.JoinHostPort(testDSIPv6, "69"), tftpBackends, "ClusterIP", "Cluster")
+				ciliumAddService(31069, net.JoinHostPort(testDSIPv6, "69"), tftpBackends, "ClusterIP", "Cluster")
 			})
 
 			AfterAll(func() {
@@ -1753,13 +1791,13 @@ var _ = Describe("K8sServicesTest", func() {
 
 		SkipContextIf(helpers.RunsWithoutKubeProxy, "Tests NodePort (kube-proxy) with global hostFirewall disabled", func() {
 			BeforeAll(func() {
-				DeployCiliumOptionsAndDNS(kubectl, ciliumFilename, getOpts(map[string]string{
+				DeployCiliumOptionsAndDNS(kubectl, ciliumFilename, map[string]string{
 					// When kube-proxy is enabled, the host firewall is not
 					// compatible with externalTrafficPolicy=Local because traffic
 					// from pods to remote nodes goes through the tunnel.
 					// This issue is tracked at #12542.
 					"global.hostFirewall": "false",
-				}))
+				})
 			})
 
 			It("With externalTrafficPolicy=Local", func() {
@@ -1767,7 +1805,7 @@ var _ = Describe("K8sServicesTest", func() {
 			})
 
 			AfterAll(func() {
-				DeployCiliumOptionsAndDNS(kubectl, ciliumFilename, defaultOpts)
+				DeployCiliumAndDNS(kubectl, ciliumFilename)
 			})
 		})
 
@@ -1779,20 +1817,9 @@ var _ = Describe("K8sServicesTest", func() {
 			var (
 				testDSIPv6 string = "fd03::310"
 				data       v1.Service
-
-				k8s1IPv6, k8s2IPv6 string
 			)
 
 			BeforeAll(func() {
-				DeployCiliumOptionsAndDNS(kubectl, ciliumFilename, map[string]string{
-					"devices": fmt.Sprintf(`'{%s}'`, helpers.SecondaryIface),
-				})
-
-				k8s1IPv6 = getIPv6AddrForIface(k8s1NodeName, helpers.SecondaryIface)
-				Expect(k8s1IPv6).ToNot(BeEmpty(), "Cannot get IPv6 address for K8s1 node")
-				k8s2IPv6 = getIPv6AddrForIface(k8s2NodeName, helpers.SecondaryIface)
-				Expect(k8s2IPv6).ToNot(BeEmpty(), "Cannot get IPv6 address for K8s2 node")
-
 				err := kubectl.Get(helpers.DefaultNamespace, "service test-nodeport").Unmarshal(&data)
 				Expect(err).Should(BeNil(), "Cannot retrieve service")
 
@@ -1802,17 +1829,17 @@ var _ = Describe("K8sServicesTest", func() {
 				ciliumAddService(31081, net.JoinHostPort("::", fmt.Sprintf("%d", data.Spec.Ports[0].NodePort)), httpBackends, "NodePort", "Cluster")
 				// Add service corresponding to IPv6 address of the nodes so that they become
 				// reachable from outside the cluster.
-				ciliumAddServiceOnNode(helpers.K8s1, 31082, net.JoinHostPort(k8s1IPv6, fmt.Sprintf("%d", data.Spec.Ports[0].NodePort)),
+				ciliumAddServiceOnNode(helpers.K8s1, 31082, net.JoinHostPort(primaryK8s1IPv6, fmt.Sprintf("%d", data.Spec.Ports[0].NodePort)),
 					httpBackends, "NodePort", "Cluster")
-				ciliumAddServiceOnNode(helpers.K8s2, 31082, net.JoinHostPort(k8s2IPv6, fmt.Sprintf("%d", data.Spec.Ports[0].NodePort)),
+				ciliumAddServiceOnNode(helpers.K8s2, 31082, net.JoinHostPort(primaryK8s2IPv6, fmt.Sprintf("%d", data.Spec.Ports[0].NodePort)),
 					httpBackends, "NodePort", "Cluster")
 
 				tftpBackends := ciliumIPv6Backends("-l k8s:zgroup=testDS,k8s:io.kubernetes.pod.namespace=default", "69")
 				ciliumAddService(31069, net.JoinHostPort(testDSIPv6, fmt.Sprintf("%d", data.Spec.Ports[1].NodePort)), tftpBackends, "NodePort", "Cluster")
 				ciliumAddService(31070, net.JoinHostPort("::", fmt.Sprintf("%d", data.Spec.Ports[1].NodePort)), tftpBackends, "NodePort", "Cluster")
-				ciliumAddServiceOnNode(helpers.K8s1, 31071, net.JoinHostPort(k8s1IPv6, fmt.Sprintf("%d", data.Spec.Ports[1].NodePort)),
+				ciliumAddServiceOnNode(helpers.K8s1, 31071, net.JoinHostPort(primaryK8s1IPv6, fmt.Sprintf("%d", data.Spec.Ports[1].NodePort)),
 					tftpBackends, "NodePort", "Cluster")
-				ciliumAddServiceOnNode(helpers.K8s2, 31071, net.JoinHostPort(k8s2IPv6, fmt.Sprintf("%d", data.Spec.Ports[1].NodePort)),
+				ciliumAddServiceOnNode(helpers.K8s2, 31071, net.JoinHostPort(primaryK8s2IPv6, fmt.Sprintf("%d", data.Spec.Ports[1].NodePort)),
 					tftpBackends, "NodePort", "Cluster")
 			})
 
@@ -1823,13 +1850,10 @@ var _ = Describe("K8sServicesTest", func() {
 				ciliumDelService(31069)
 				ciliumDelService(31070)
 				ciliumDelService(31071)
-
-				// Reinstall cilium without the global devices set to secondary interface.
-				DeployCiliumOptionsAndDNS(kubectl, ciliumFilename, defaultOpts)
 			})
 
 			It("Test IPv6 connectivity to NodePort service", func() {
-				testNodePortIPv6(k8s1IPv6, k8s2IPv6, helpers.ExistNodeWithoutCilium(), &data)
+				testNodePortIPv6(primaryK8s1IPv6, primaryK8s2IPv6, helpers.ExistNodeWithoutCilium(), &data)
 			})
 		})
 
@@ -1906,7 +1930,7 @@ var _ = Describe("K8sServicesTest", func() {
 					clientPod, _ := kubectl.GetPodOnNodeLabeledWithOffset(helpers.K8s1, testDSClient, 0)
 					// Destination is a NodePort in k8s2, curl (in k8s1) binding to the same local port as the DNS proxy port
 					// in k8s2
-					url := getTFTPLink(secondaryK8s2IPv6, data.Spec.Ports[1].NodePort) + fmt.Sprintf(" --local-port %d", DNSProxyPort2)
+					url := getTFTPLink(primaryK8s2IPv6, data.Spec.Ports[1].NodePort) + fmt.Sprintf(" --local-port %d", DNSProxyPort2)
 					cmd := testCommand(helpers.CurlFailNoStats(url), count, fails)
 					By("Making %d curl requests from %s pod to service %s using source port %d", count, clientPod, url, DNSProxyPort2)
 					res := kubectl.ExecPodCmd(helpers.DefaultNamespace, clientPod, cmd)
@@ -2026,9 +2050,9 @@ var _ = Describe("K8sServicesTest", func() {
 						var ccnpHostPolicy string
 
 						BeforeAll(func() {
-							DeployCiliumOptionsAndDNS(kubectl, ciliumFilename, getOpts(map[string]string{
+							DeployCiliumOptionsAndDNS(kubectl, ciliumFilename, map[string]string{
 								"global.hostFirewall": "true",
-							}))
+							})
 
 							ccnpHostPolicy = helpers.ManifestGet(kubectl.BasePath(), "ccnp-host-policy-nodeport-tests.yaml")
 							_, err := kubectl.CiliumPolicyAction(helpers.DefaultNamespace, ccnpHostPolicy,
@@ -2043,7 +2067,7 @@ var _ = Describe("K8sServicesTest", func() {
 							Expect(err).Should(BeNil(),
 								"Policy %s cannot be deleted", ccnpHostPolicy)
 
-							DeployCiliumOptionsAndDNS(kubectl, ciliumFilename, defaultOpts)
+							DeployCiliumAndDNS(kubectl, ciliumFilename)
 						})
 
 						It("Tests NodePort", func() {
@@ -2064,13 +2088,13 @@ var _ = Describe("K8sServicesTest", func() {
 						var echoYAML string
 
 						BeforeAll(func() {
-							DeployCiliumOptionsAndDNS(kubectl, ciliumFilename, getOpts(map[string]string{
+							DeployCiliumOptionsAndDNS(kubectl, ciliumFilename, map[string]string{
 								"global.nodePort.algorithm": "maglev",
 								// The echo svc has two backends. the closest supported
 								// prime number which is greater than 100 * |backends_count|
 								// is 251.
 								"config.maglev.tableSize": "251",
-							}))
+							})
 
 							echoYAML = helpers.ManifestGet(kubectl.BasePath(), "echo-svc.yaml")
 							kubectl.ApplyDefault(echoYAML).ExpectSuccess("unable to apply %s", echoYAML)
@@ -2100,10 +2124,10 @@ var _ = Describe("K8sServicesTest", func() {
 
 				Context("Tests with direct routing", func() {
 					BeforeAll(func() {
-						DeployCiliumOptionsAndDNS(kubectl, ciliumFilename, getOpts(map[string]string{
+						DeployCiliumOptionsAndDNS(kubectl, ciliumFilename, map[string]string{
 							"global.tunnel":               "disabled",
 							"global.autoDirectNodeRoutes": "true",
-						}))
+						})
 					})
 
 					It("Tests NodePort", func() {
@@ -2142,11 +2166,11 @@ var _ = Describe("K8sServicesTest", func() {
 						var ccnpHostPolicy string
 
 						BeforeAll(func() {
-							DeployCiliumOptionsAndDNS(kubectl, ciliumFilename, getOpts(map[string]string{
+							DeployCiliumOptionsAndDNS(kubectl, ciliumFilename, map[string]string{
 								"global.tunnel":               "disabled",
 								"global.autoDirectNodeRoutes": "true",
 								"global.hostFirewall":         "true",
-							}))
+							})
 
 							ccnpHostPolicy = helpers.ManifestGet(kubectl.BasePath(), "ccnp-host-policy-nodeport-tests.yaml")
 							_, err := kubectl.CiliumPolicyAction(helpers.DefaultNamespace, ccnpHostPolicy,
@@ -2161,10 +2185,10 @@ var _ = Describe("K8sServicesTest", func() {
 							Expect(err).Should(BeNil(),
 								"Policy %s cannot be deleted", ccnpHostPolicy)
 
-							DeployCiliumOptionsAndDNS(kubectl, ciliumFilename, getOpts(map[string]string{
+							DeployCiliumOptionsAndDNS(kubectl, ciliumFilename, map[string]string{
 								"global.tunnel":               "disabled",
 								"global.autoDirectNodeRoutes": "true",
-							}))
+							})
 						})
 
 						It("Tests NodePort", func() {
@@ -2185,7 +2209,7 @@ var _ = Describe("K8sServicesTest", func() {
 						var echoYAML string
 
 						BeforeAll(func() {
-							DeployCiliumOptionsAndDNS(kubectl, ciliumFilename, getOpts(map[string]string{
+							DeployCiliumOptionsAndDNS(kubectl, ciliumFilename, map[string]string{
 								"global.tunnel":               "disabled",
 								"global.autoDirectNodeRoutes": "true",
 								"global.nodePort.algorithm":   "maglev",
@@ -2193,7 +2217,7 @@ var _ = Describe("K8sServicesTest", func() {
 								// prime number which is greater than 100 * |backends_count|
 								// is 251.
 								"config.maglev.tableSize": "251",
-							}))
+							})
 
 							echoYAML = helpers.ManifestGet(kubectl.BasePath(), "echo-svc.yaml")
 							kubectl.ApplyDefault(echoYAML).ExpectSuccess("unable to apply %s", echoYAML)
@@ -2621,6 +2645,7 @@ var _ = Describe("K8sServicesTest", func() {
 		)
 
 		BeforeAll(func() {
+			DeployCiliumAndDNS(kubectl, ciliumFilename)
 
 			bookinfoV1YAML = helpers.ManifestGet(kubectl.BasePath(), "bookinfo-v1.yaml")
 			bookinfoV2YAML = helpers.ManifestGet(kubectl.BasePath(), "bookinfo-v2.yaml")
