@@ -108,7 +108,7 @@ func (n *PolicyVerdictNotify) DumpInfo(data []byte) {
 	if n.IsTrafficIngress() {
 		dir = "ingress"
 	}
-	fmt.Printf("Policy verdict log: flow %#x local EP ID %d, remote ID %d, proto %d, %s, action %s, match %s, %s\n",
-		n.Hash, n.Source, n.RemoteLabel, n.Proto, dir, GetPolicyActionString(n.Verdict, n.IsTrafficAudited()),
+	fmt.Printf("Policy verdict log: flow %#x local EP ID %d, remote ID %s, proto %d, %s, action %s, match %s, %s\n",
+		n.Hash, n.Source, api.Entity(n.RemoteLabel), n.Proto, dir, GetPolicyActionString(n.Verdict, n.IsTrafficAudited()),
 		n.GetPolicyMatchType(), GetConnectionSummary(data[PolicyVerdictNotifyLen:]))
 }

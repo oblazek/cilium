@@ -43,8 +43,8 @@ type DropNotify struct {
 
 // DumpInfo prints a summary of the drop messages.
 func (n *DropNotify) DumpInfo(data []byte) {
-	fmt.Printf("xx drop (%s) flow %#x to endpoint %d, identity %d->%d: %s\n",
-		api.DropReason(n.SubType), n.Hash, n.DstID, n.SrcLabel, n.DstLabel,
+	fmt.Printf("xx drop (%s) flow %#x to endpoint %d, identity %s->%s: %s\n",
+		api.DropReason(n.SubType), n.Hash, n.DstID, api.Entity(n.SrcLabel), api.Entity(n.DstLabel),
 		GetConnectionSummary(data[DropNotifyLen:]))
 }
 
@@ -54,7 +54,7 @@ func (n *DropNotify) DumpVerbose(dissect bool, data []byte, prefix string) {
 		prefix, n.Hash, n.Source, n.OrigLen, api.DropReason(n.SubType))
 
 	if n.SrcLabel != 0 || n.DstLabel != 0 {
-		fmt.Printf(", identity %d->%d", n.SrcLabel, n.DstLabel)
+		fmt.Printf(", identity %s->%s", api.Entity(n.SrcLabel), api.Entity(n.DstLabel))
 	}
 
 	if n.DstID != 0 {

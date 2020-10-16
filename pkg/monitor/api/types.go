@@ -22,6 +22,7 @@ import (
 	"strings"
 	"time"
 
+	"github.com/cilium/cilium/pkg/identity"
 	"github.com/cilium/cilium/pkg/monitor/notifications"
 )
 
@@ -550,4 +551,12 @@ func (m PolicyMatchType) String() string {
 
 	}
 	return "unknown"
+}
+
+// Entity prints the ID in a human readable string
+func Entity(id uint32) string {
+	if name, ok := identity.ReservedIdentityNames[identity.NumericIdentity(id)]; ok {
+		return name
+	}
+	return fmt.Sprintf("%d", id)
 }

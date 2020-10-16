@@ -201,12 +201,12 @@ func (n *TraceNotify) DataOffset() uint {
 func (n *TraceNotify) DumpInfo(data []byte) {
 	hdrLen := n.DataOffset()
 	if n.encryptReason() != "" {
-		fmt.Printf("%s %s flow %#x identity %d->%d state %s ifindex %s orig-ip %s: %s\n",
-			n.traceSummary(), n.encryptReason(), n.Hash, n.SrcLabel, n.DstLabel,
+		fmt.Printf("%s %s flow %#x identity %s->%s state %s ifindex %s orig-ip %s: %s\n",
+			n.traceSummary(), n.encryptReason(), n.Hash, api.Entity(n.SrcLabel), api.Entity(n.DstLabel),
 			n.traceReason(), ifname(int(n.Ifindex)), n.OriginalIP().String(), GetConnectionSummary(data[hdrLen:]))
 	} else {
-		fmt.Printf("%s flow %#x identity %d->%d state %s ifindex %s orig-ip %s: %s\n",
-			n.traceSummary(), n.Hash, n.SrcLabel, n.DstLabel,
+		fmt.Printf("%s flow %#x identity %s->%s state %s ifindex %s orig-ip %s: %s\n",
+			n.traceSummary(), n.Hash, api.Entity(n.SrcLabel), api.Entity(n.DstLabel),
 			n.traceReason(), ifname(int(n.Ifindex)), n.OriginalIP().String(), GetConnectionSummary(data[hdrLen:]))
 	}
 }
@@ -221,7 +221,7 @@ func (n *TraceNotify) DumpVerbose(dissect bool, data []byte, prefix string) {
 	}
 
 	if n.SrcLabel != 0 || n.DstLabel != 0 {
-		fmt.Printf(", identity %d->%d", n.SrcLabel, n.DstLabel)
+		fmt.Printf(", identity %s->%s", api.Entity(n.SrcLabel), api.Entity(n.DstLabel))
 	}
 
 	fmt.Printf(", orig-ip " + n.OriginalIP().String())
