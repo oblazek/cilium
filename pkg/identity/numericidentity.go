@@ -286,7 +286,7 @@ var (
 		labels.IDNameInit:       ReservedIdentityInit,
 		labels.IDNameRemoteNode: ReservedIdentityRemoteNode,
 	}
-	reservedIdentityNames = map[NumericIdentity]string{
+	ReservedIdentityNames = map[NumericIdentity]string{
 		ReservedIdentityHost:       labels.IDNameHost,
 		ReservedIdentityWorld:      labels.IDNameWorld,
 		ReservedIdentityUnmanaged:  labels.IDNameUnmanaged,
@@ -320,7 +320,7 @@ func AddUserDefinedNumericIdentity(identity NumericIdentity, label string) error
 		return ErrNotUserIdentity
 	}
 	reservedIdentities[label] = identity
-	reservedIdentityNames[identity] = label
+	ReservedIdentityNames[identity] = label
 	return nil
 }
 
@@ -333,10 +333,10 @@ func DelReservedNumericIdentity(identity NumericIdentity) error {
 	if !IsUserReservedIdentity(identity) {
 		return ErrNotUserIdentity
 	}
-	label, ok := reservedIdentityNames[identity]
+	label, ok := ReservedIdentityNames[identity]
 	if ok {
 		delete(reservedIdentities, label)
-		delete(reservedIdentityNames, identity)
+		delete(ReservedIdentityNames, identity)
 	}
 	return nil
 }
@@ -362,7 +362,7 @@ func (id NumericIdentity) StringID() string {
 }
 
 func (id NumericIdentity) String() string {
-	if v, exists := reservedIdentityNames[id]; exists {
+	if v, exists := ReservedIdentityNames[id]; exists {
 		return v
 	}
 
@@ -400,7 +400,7 @@ func GetReservedID(name string) NumericIdentity {
 
 // IsReservedIdentity returns whether id is one of the special reserved identities.
 func (id NumericIdentity) IsReservedIdentity() bool {
-	_, isReservedIdentity := reservedIdentityNames[id]
+	_, isReservedIdentity := ReservedIdentityNames[id]
 	return isReservedIdentity
 }
 
