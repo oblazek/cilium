@@ -287,6 +287,7 @@ var (
 		labels.IDNameRemoteNode: ReservedIdentityRemoteNode,
 	}
 	ReservedIdentityNames = map[NumericIdentity]string{
+		IdentityUnknown:            "unknown",
 		ReservedIdentityHost:       labels.IDNameHost,
 		ReservedIdentityWorld:      labels.IDNameWorld,
 		ReservedIdentityUnmanaged:  labels.IDNameUnmanaged,
