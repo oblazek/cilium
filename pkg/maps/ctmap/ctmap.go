@@ -15,13 +15,13 @@
 package ctmap
 
 import (
-	"bytes"
 	"fmt"
 	"io"
 	"math"
 	"net"
 	"os"
 	"reflect"
+	"strings"
 	"time"
 	"unsafe"
 
@@ -254,20 +254,20 @@ type EmitCTEntryCBFunc func(srcIP, dstIP net.IP, srcPort, dstPort uint16, nextHd
 // DoDumpEntries iterates through Map m and writes the values of the ct entries
 // in m to a string.
 func DoDumpEntries(m CtMap) (string, error) {
-	var buffer bytes.Buffer
+	var sb strings.Builder
 
 	cb := func(k bpf.MapKey, v bpf.MapValue) {
 		// No need to deep copy as the values are used to create new strings
 		key := k.(CtKey)
-		if !key.ToHost().Dump(&buffer, true) {
+		if !key.ToHost().Dump(&sb, true) {
 			return
 		}
 		value := v.(*CtEntry)
-		buffer.WriteString(value.String())
+		sb.WriteString(value.String())
 	}
-	// DumpWithCallback() must be called before buffer.String().
+	// DumpWithCallback() must be called before sb.String().
 	err := m.DumpWithCallback(cb)
-	return buffer.String(), err
+	return sb.String(), err
 }
 
 // DumpEntries iterates through Map m and writes the values of the ct entries

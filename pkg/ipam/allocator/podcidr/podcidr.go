@@ -15,7 +15,6 @@
 package podcidr
 
 import (
-	"bytes"
 	"context"
 	"fmt"
 	"net"
@@ -866,7 +865,7 @@ func (n *NodesPodCIDRManager) allocateNext(nodeName string) (*nodeCIDRs, bool, e
 }
 
 func getCIDRAllocatorsInfo(cidrAllocators []CIDRAllocator, netTypes string) string {
-	var cidrAllocatorsInfo bytes.Buffer
+	var cidrAllocatorsInfo strings.Builder
 	cidrAllocatorsLength := len(cidrAllocators)
 	if cidrAllocatorsLength == 0 {
 		return "[]"
