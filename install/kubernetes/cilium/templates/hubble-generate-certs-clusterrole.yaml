@@ -14,11 +14,23 @@ rules:
   - apiGroups:
       - ""
     resources:
+      - configmaps
+    resourceNames:
+      - externalworkload-ca-cert
+    verbs:
+      - get
+      - update
+  - apiGroups:
+      - ""
+    resources:
       - secrets
     resourceNames:
       - hubble-server-certs
       - hubble-relay-client-certs
       - hubble-relay-server-certs
+      - externalworkload-server-certs
+      - externalworkload-admin-certs
+      - externalworkload-client-certs
     verbs:
       - update
   - apiGroups:
