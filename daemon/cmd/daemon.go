@@ -598,6 +598,10 @@ func NewDaemon(ctx context.Context, epMgr *endpointmanager.EndpointManager, dp d
 		agentLabels[k8sConst.PolicyLabelCluster] = option.Config.ClusterName
 		// Set configured agent labels to local node for node registration
 		node.SetLabels(agentLabels)
+
+		// This can override node addressing config, so do this before starting IPAM
+		log.Infof("Calling JoinCluster(%s)", nodeTypes.GetName())
+		d.nodeDiscovery.JoinCluster(nodeTypes.GetName())
 	}
 
 	// Start IPAM
