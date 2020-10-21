@@ -134,7 +134,6 @@ func (n *Node) ToCiliumNode() *ciliumv2.CiliumNode {
 	}
 }
 
-
 // RegisterNode overloads GetKeyName to ignore the cluster name, as cluster name may not be stable during node registration.
 //
 // +k8s:deepcopy-gen=true
