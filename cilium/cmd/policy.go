@@ -39,17 +39,12 @@ var policyCmd = &cobra.Command{
 }
 
 var (
-	ignoredMasksSource = []string{".git"}
-	ignoredMasks       []*regexp.Regexp
+	ignoredMasks = []*regexp.Regexp{
+		regexp.MustCompile(`\A\.git\z`),
+	}
 )
 
 func init() {
-	ignoredMasks = make([]*regexp.Regexp, len(ignoredMasksSource))
-
-	for i := range ignoredMasksSource {
-		ignoredMasks[i] = regexp.MustCompile(ignoredMasksSource[i])
-	}
-
 	rootCmd.AddCommand(policyCmd)
 }
 
