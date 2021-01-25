@@ -247,6 +247,7 @@ cilium-agent [flags]
       --proxy-prometheus-port int                               Port to serve Envoy metrics on. Default 0 (disabled).
       --read-cni-conf string                                    CNI configuration file to use as a source for --write-cni-conf-when-ready. If not supplied, a suitable one will be generated.
       --restore                                                 Restores state, if possible, from previous daemon (default true)
+      --restore-retries int                                     Number of retries to validate connector plumbing of an endpoint (default 1)
       --route-metric int                                        Overwrite the metric used by cilium when adding routes to its 'cilium_host' device
       --sidecar-istio-proxy-image string                        Regular expression matching compatible Istio sidecar istio-proxy container image names (default "cilium/istio_proxy")
       --single-cluster-route                                    Use a single cluster route instead of per node routes

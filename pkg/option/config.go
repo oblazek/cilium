@@ -407,6 +407,9 @@ const (
 	// Restore restores state, if possible, from previous daemon
 	Restore = "restore"
 
+	// RestoreRetries is the number of retries to validate connector plumbing of endpoint
+	RestoreRetries = "restore-retries"
+
 	// SidecarIstioProxyImage regular expression matching compatible Istio sidecar istio-proxy container image names
 	SidecarIstioProxyImage = "sidecar-istio-proxy-image"
 
@@ -1340,6 +1343,10 @@ type DaemonConfig struct {
 
 	// RestoreState enables restoring the state from previous running daemons.
 	RestoreState bool
+
+	// RestoreValidationRetries tries to validate x times the endpoint plumbing on failure
+	// with backoff interval
+	RestoreValidationRetries int
 
 	// EnableHostIPRestore enables restoring the host IPs based on state
 	// left behind by previous Cilium runs.
@@ -2981,6 +2988,7 @@ func (c *DaemonConfig) Populate(vp *viper.Viper) {
 	c.ProxyMaxConnectionDuration = time.Duration(vp.GetInt64(ProxyMaxConnectionDuration))
 	c.ReadCNIConfiguration = vp.GetString(ReadCNIConfiguration)
 	c.RestoreState = vp.GetBool(Restore)
+	c.RestoreValidationRetries = vp.GetInt(RestoreRetries)
 	c.RouteMetric = vp.GetInt(RouteMetric)
 	c.RunDir = vp.GetString(StateDir)
 	c.SidecarIstioProxyImage = vp.GetString(SidecarIstioProxyImage)

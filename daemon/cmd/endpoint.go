@@ -318,6 +318,7 @@ func (d *Daemon) createEndpoint(ctx context.Context, owner regeneration.Owner, e
 		// between BPF programs.
 		disabled := false
 		epTemplate.DatapathConfiguration.RequireRouting = &disabled
+		epTemplate.DatapathConfiguration.DisableSipVerification = true
 	}
 
 	log.WithFields(logrus.Fields{

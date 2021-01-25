@@ -210,6 +210,16 @@ func GetAzureCLICommand() *exec.Cmd {
 	// Default path for non-Windows.
 	const azureCLIDefaultPath = "/bin:/sbin:/usr/bin:/usr/local/bin"
 
+	// Validate resource, since it gets sent as a command line argument to Azure CLI
+	const invalidResourceErrorTemplate = "Resource %s is not in expected format. Only alphanumeric characters, [dot], [colon], [hyphen], and [forward slash] are allowed."
+	match, err := regexp.MatchString("^[0-9a-zA-Z-.:/]+$", resource)
+	if err != nil {
+		return nil, err
+	}
+	if !match {
+		return nil, fmt.Errorf(invalidResourceErrorTemplate, resource)
+	}
+
 	// Execute Azure CLI to get token
 	var cliCmd *exec.Cmd
 	if runtime.GOOS == "windows" {
@@ -222,6 +232,21 @@ func GetAzureCLICommand() *exec.Cmd {
 		cliCmd.Env = os.Environ()
 		cliCmd.Env = append(cliCmd.Env, fmt.Sprintf("PATH=%s:%s", os.Getenv(azureCLIPath), azureCLIDefaultPath))
 	}
+	cliCmd.Args = append(cliCmd.Args, "account", "get-access-token", "-o", "json", "--resource", resource)
 
-	return cliCmd
+	var stderr bytes.Buffer
+	cliCmd.Stderr = &stderr
+
+	output, err := cliCmd.Output()
+	if err != nil {
+		return nil, fmt.Errorf("Invoking Azure CLI failed with the following error: %s", stderr.String())
+	}
+
+	tokenResponse := Token{}
+	err = json.Unmarshal(output, &tokenResponse)
+	if err != nil {
+		return nil, err
+	}
+
+	return &tokenResponse, err
 }

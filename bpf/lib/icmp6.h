@@ -37,7 +37,7 @@
  * messages.
  */
 #ifndef ACTION_UNKNOWN_ICMP6_NS
-#define ACTION_UNKNOWN_ICMP6_NS DROP_UNKNOWN_TARGET
+#define ACTION_UNKNOWN_ICMP6_NS CTX_ACT_OK
 #endif
 
 static __always_inline __u8 icmp6_load_type(struct __ctx_buff *ctx, int nh_off)
@@ -396,7 +396,7 @@ static __always_inline int __icmp6_handle_ns(struct __ctx_buff *ctx, int nh_off)
 		return send_icmp6_ndisc_adv(ctx, nh_off, &router_mac, false);
 	}
 
-	/* Unknown target address, drop */
+	/* Unknown target address, could be fe80 like, pass to stack */
 	return ACTION_UNKNOWN_ICMP6_NS;
 }
 
@@ -466,8 +466,10 @@ icmp6_host_handle(struct __ctx_buff *ctx __maybe_unused)
 	__u8 type __maybe_unused;
 
 	type = icmp6_load_type(ctx, ETH_HLEN);
-	if (type == ICMP6_NS_MSG_TYPE)
-		return icmp6_handle_ns(ctx, ETH_HLEN, METRIC_INGRESS);
+	if (type == ICMP6_NS_MSG_TYPE) {
+		return 0;
+	}
+
 
 #ifdef ENABLE_HOST_FIREWALL
 	/* When the host firewall is enabled, we drop and allow ICMPv6 messages

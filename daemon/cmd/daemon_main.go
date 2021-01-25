@@ -725,6 +725,9 @@ func initializeFlags() {
 	flags.Bool(option.Restore, true, "Restores state, if possible, from previous daemon")
 	option.BindEnv(Vp, option.Restore)
 
+	flags.Int(option.RestoreRetries, 1, "Number of retries to validate connector plumbing of an endpoint")
+	option.BindEnv(Vp, option.RestoreRetries)
+
 	flags.String(option.SidecarIstioProxyImage, k8s.DefaultSidecarIstioProxyImageRegexp,
 		"Regular expression matching compatible Istio sidecar istio-proxy container image names")
 	option.BindEnv(Vp, option.SidecarIstioProxyImage)
