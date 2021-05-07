@@ -3,7 +3,7 @@
 
 include ../Makefile.defs
 
-SUBDIRS := cilium-docker cilium-cni
+SUBDIRS := cilium-docker cilium-cni cilium-openstack
 
 .PHONY: all $(SUBDIRS) clean install
 
