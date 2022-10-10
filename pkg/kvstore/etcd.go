@@ -47,6 +47,7 @@ const (
 	EtcdOptionConfig             = "etcd.config"
 	etcdOptionKeepAliveHeartbeat = "etcd.keepaliveHeartbeat"
 	etcdOptionKeepAliveTimeout   = "etcd.keepaliveTimeout"
+	EtcdOptionDisableHeartbeat   = "etcd.disableHeartbeat"
 
 	// EtcdRateLimitOption specifies maximum kv operations per second
 	EtcdRateLimitOption = "etcd.qps"
@@ -130,6 +131,13 @@ func newEtcdModule() backendModule {
 					return err
 				},
 			},
+			EtcdOptionDisableHeartbeat: &backendOption{
+				description: "Disable Heartbeat check",
+				validate: func(v string) error {
+					_, err := strconv.ParseBool(v)
+					return err
+				},
+			},
 		},
 	}
 }
@@ -173,6 +181,9 @@ type clientOptions struct {
 	KeepAliveHeartbeat time.Duration
 	KeepAliveTimeout   time.Duration
 	RateLimit          int
+	UserName           string
+	Password           string
+	DisableHeartbeat   bool
 }
 
 func (e *etcdModule) newClient(ctx context.Context, opts *ExtraOptions) (BackendOperations, chan error) {
@@ -194,6 +205,10 @@ func (e *etcdModule) newClient(ctx context.Context, opts *ExtraOptions) (Backend
 
 	if o, ok := e.opts[etcdOptionKeepAliveHeartbeat]; ok && o.value != "" {
 		clientOptions.KeepAliveHeartbeat, _ = time.ParseDuration(o.value)
+	}
+
+	if o, ok := e.opts[EtcdOptionDisableHeartbeat]; ok && o.value != "" {
+		clientOptions.DisableHeartbeat, _ = strconv.ParseBool(o.value)
 	}
 
 	endpointsOpt, endpointsSet := e.opts[EtcdAddrOption]
@@ -763,31 +778,34 @@ func connectEtcdClient(ctx context.Context, config *client.Config, cfgPath strin
 		}
 	}()
 
-	go func() {
-		watcher := ec.ListAndWatch(ctx, HeartbeatPath, HeartbeatPath, 128)
+	if !clientOptions.DisableHeartbeat {
+		go func() {
+			watcher := ec.ListAndWatch(ctx, HeartbeatPath, HeartbeatPath, 128)
 
-		for {
-			select {
-			case _, ok := <-watcher.Events:
-				if !ok {
-					log.Debug("Stopping heartbeat watcher")
-					watcher.Stop()
-					return
+			for {
+				select {
+				case _, ok := <-watcher.Events:
+					if !ok {
+						log.Debug("Stopping heartbeat watcher")
+						watcher.Stop()
+						return
+					}
+
+					// It is tempting to compare against the
+					// heartbeat value stored in the key. However,
+					// this would require the time on all nodes to
+					// be synchronized. Instead, assume current
+					// time and print the heartbeat value in debug
+					// messages for troubleshooting
+					ec.RWMutex.Lock()
+					ec.lastHeartbeat = time.Now()
+					ec.RWMutex.Unlock()
+					log.Debug("Received update notification of heartbeat")
 				}
-
-				// It is tempting to compare against the
-				// heartbeat value stored in the key. However,
-				// this would require the time on all nodes to
-				// be synchronized. Instead, assume current
-				// time and print the heartbeat value in debug
-				// messages for troubleshooting
-				ec.RWMutex.Lock()
-				ec.lastHeartbeat = time.Now()
-				ec.RWMutex.Unlock()
-				log.Debug("Received update notification of heartbeat")
 			}
-		}
-	}()
+		}()
+
+	}
 
 	go ec.statusChecker()
 
