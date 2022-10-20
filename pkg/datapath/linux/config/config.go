@@ -511,6 +511,9 @@ func (h *HeaderfileWriter) WriteNodeConfig(w io.Writer, cfg *datapath.LocalNodeC
 
 	if option.Config.EnableHostFirewall {
 		cDefinesMap["ENABLE_HOST_FIREWALL"] = "1"
+		if option.Config.EnableIdentityFromIPIP {
+			cDefinesMap["ENABLE_IDENTITY_FROM_IPIP"] = "1"
+		}
 	}
 
 	if option.Config.EnableIPSec {

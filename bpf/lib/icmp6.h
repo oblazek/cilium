@@ -428,6 +428,9 @@ int tail_icmp6_handle_ns(struct __ctx_buff *ctx)
 static __always_inline int icmp6_handle_ns(struct __ctx_buff *ctx, int nh_off,
 					   enum metric_dir direction)
 {
+#ifdef SKIP_ICMPV6_NS_HANDLING
+	return CTX_ACT_OK;
+#endif
 	ctx_store_meta(ctx, 0, nh_off);
 	ctx_store_meta(ctx, 1, direction);
 

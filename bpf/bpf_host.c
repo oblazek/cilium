@@ -30,6 +30,15 @@
  */
 #define SKIP_ICMPV6_ECHO_HANDLING
 
+#ifdef ENABLE_IDENTITY_FROM_IPIP
+/* IPIP6 packet needs to allow slightly larger message in send_policy_verdict_notify
+ */
+# undef TRACE_PAYLOAD_LEN
+# define TRACE_PAYLOAD_LEN 192ULL
+
+# define SKIP_ICMPV6_NS_HANDLING
+#endif
+
 #ifndef VLAN_FILTER
 # define VLAN_FILTER(ifindex, vlan_id) return false;
 #endif

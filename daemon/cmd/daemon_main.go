@@ -279,7 +279,7 @@ func initializeFlags() {
 	option.BindEnv(Vp, option.EnableRemoteNodeIdentity)
 
 	flags.Bool(option.EnablePerNodeIdentity, defaults.EnablePerNodeIdentity, "Enable use of remote node identity")
-	option.BindEnv(option.EnablePerNodeIdentity)
+	option.BindEnv(Vp, option.EnablePerNodeIdentity)
 
 	flags.String(option.EncryptInterface, "", "Transparent encryption interface")
 	option.BindEnv(Vp, option.EncryptInterface)
@@ -613,6 +613,9 @@ func initializeFlags() {
 
 	flags.Bool(option.EnableHostFirewall, false, "Enable host network policies")
 	option.BindEnv(Vp, option.EnableHostFirewall)
+
+	flags.Bool(option.EnableIdentityFromIPIP, false, "Enable using of identity from internal header of IPinIP protocol (enable-host-firewall is needed)")
+	option.BindEnv(Vp, option.EnableIdentityFromIPIP)
 
 	flags.String(option.IPv4NativeRoutingCIDR, "", "Allows to explicitly specify the IPv4 CIDR for native routing. "+
 		"When specified, Cilium assumes networking for this CIDR is preconfigured and hands traffic destined for that range to the Linux network stack without applying any SNAT. "+

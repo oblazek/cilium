@@ -18,34 +18,73 @@ static __always_inline int
 ipv6_host_policy_egress(struct __ctx_buff *ctx, __u32 src_id,
 			struct trace_ctx *trace, __s8 *ext_err)
 {
-	int ret, verdict, l3_off = ETH_HLEN, l4_off, hdrlen;
+	int ret, verdict, l3_off = ETH_HLEN, l4_off = 0, hdrlen = 0;
 	struct ct_state ct_state_new = {}, ct_state = {};
 	__u8 policy_match_type = POLICY_MATCH_NONE;
 	__u8 audited = 0;
 	struct remote_endpoint_info *info;
 	struct ipv6_ct_tuple tuple = {};
 	__u32 dst_id = 0;
-	union v6addr orig_dip;
 	void *data, *data_end;
 	struct ipv6hdr *ip6;
 	__u16 proxy_port = 0;
+	union v6addr saddr, daddr;
+#  ifdef ENABLE_IDENTITY_FROM_IPIP
+	int ihdr_off = 0;
+	struct ipv6hdr *ip6_inner;
+#  endif
 
+#  ifndef ENABLE_IDENTITY_FROM_IPIP
 	/* Only enforce host policies for packets from host IPs. */
 	if (src_id != HOST_ID)
 		return CTX_ACT_OK;
+#  endif
 
 	if (!revalidate_data(ctx, &data, &data_end, &ip6))
 		return DROP_INVALID;
 
+	ipv6_addr_copy(&daddr, (union v6addr *)&ip6->daddr);
+	ipv6_addr_copy(&saddr, (union v6addr *)&ip6->saddr);
+
+#  ifdef ENABLE_IDENTITY_FROM_IPIP
+	if (ip6->nexthdr == IPPROTO_IPV6) {
+		/* IPv6 in IPv6 */
+
+		tuple.nexthdr = ip6->nexthdr;
+		hdrlen = ipv6_hdrlen(ctx, &tuple.nexthdr);
+		if (hdrlen < 0)
+			return hdrlen;
+
+		ihdr_off = ETH_HLEN + hdrlen;  /* offset of inner header - shifted by outer header length */
+
+		if (data + ihdr_off + sizeof(*ip6_inner) > data_end)
+			return DROP_INVALID;
+		ip6_inner = (struct ipv6hdr *)(data + ihdr_off);
+
+		if (likely(ip6_inner->version == 6 && ip6_inner->nexthdr == IPPROTO_TCP)) {
+			tuple.nexthdr = ip6_inner->nexthdr;
+			hdrlen = ipv6_hdrlen(ctx, &tuple.nexthdr);
+			if (hdrlen < 0)
+				return hdrlen;
+
+			ipv6_addr_copy(&daddr, (union v6addr *)&ip6_inner->daddr);
+			ipv6_addr_copy(&saddr, (union v6addr *)&ip6_inner->saddr);
+
+			l4_off = ihdr_off + hdrlen;
+		}
+	}
+#  endif
+
 	/* Lookup connection in conntrack map. */
-	tuple.nexthdr = ip6->nexthdr;
-	ipv6_addr_copy(&tuple.saddr, (union v6addr *)&ip6->saddr);
-	ipv6_addr_copy(&tuple.daddr, (union v6addr *)&ip6->daddr);
-	ipv6_addr_copy(&orig_dip, (union v6addr *)&ip6->daddr);
-	hdrlen = ipv6_hdrlen(ctx, &tuple.nexthdr);
-	if (hdrlen < 0)
-		return hdrlen;
-	l4_off = l3_off + hdrlen;
+	ipv6_addr_copy(&tuple.saddr, (union v6addr *)&saddr);
+	ipv6_addr_copy(&tuple.daddr, (union v6addr *)&daddr);
+	if (!l4_off) {
+		tuple.nexthdr = ip6->nexthdr;
+		hdrlen = ipv6_hdrlen(ctx, &tuple.nexthdr);
+		if (hdrlen < 0)
+			return hdrlen;
+		l4_off = l3_off + hdrlen;
+	}
 	ret = ct_lookup6(get_ct_map6(&tuple), &tuple, ctx, l4_off, CT_EGRESS,
 			 &ct_state, &trace->monitor);
 	if (ret < 0)
@@ -54,11 +93,11 @@ ipv6_host_policy_egress(struct __ctx_buff *ctx, __u32 src_id,
 	trace->reason = (enum trace_reason)ret;
 
 	/* Retrieve destination identity. */
-	info = lookup_ip6_remote_endpoint(&orig_dip);
+	info = lookup_ip6_remote_endpoint(&daddr);
 	if (info && info->sec_label)
 		dst_id = info->sec_label;
 	cilium_dbg(ctx, info ? DBG_IP_ID_MAP_SUCCEED6 : DBG_IP_ID_MAP_FAILED6,
-		   orig_dip.p4, dst_id);
+		   daddr.p4, dst_id);
 
 	/* Reply traffic and related are allowed regardless of policy verdict. */
 	if (ret == CT_REPLY || ret == CT_RELATED)
@@ -98,36 +137,81 @@ ipv6_host_policy_ingress(struct __ctx_buff *ctx, __u32 *src_id,
 	__u8 audited = 0;
 	__u32 dst_id = WORLD_ID;
 	struct remote_endpoint_info *info;
-	int ret, verdict = CTX_ACT_OK, l4_off, hdrlen;
+	int ret, verdict = CTX_ACT_OK, l4_off = 0, hdrlen = 0;
 	struct ipv6_ct_tuple tuple = {};
-	union v6addr orig_sip;
 	void *data, *data_end;
 	struct ipv6hdr *ip6;
 	__u16 proxy_port = 0;
+	union v6addr saddr, daddr;
+#  ifdef ENABLE_IDENTITY_FROM_IPIP
+	int ihdr_off = 0;
+	struct ipv6hdr *ip6_inner;
+#  endif
 
 	if (!revalidate_data(ctx, &data, &data_end, &ip6))
 		return DROP_INVALID;
 
+	ipv6_addr_copy(&daddr, (union v6addr *)&ip6->daddr);
+	ipv6_addr_copy(&saddr, (union v6addr *)&ip6->saddr);
+
+#  ifdef ENABLE_IDENTITY_FROM_IPIP
+	if (ip6->nexthdr == IPPROTO_IPV6) {
+		/* IPv6 in IPv6 */
+
+		tuple.nexthdr = ip6->nexthdr;
+		hdrlen = ipv6_hdrlen(ctx, &tuple.nexthdr);
+		if (hdrlen < 0)
+			return hdrlen;
+
+		ihdr_off = ETH_HLEN + hdrlen;  /* offset of inner header - shifted by outer header length */
+
+		if (data + ihdr_off + sizeof(*ip6_inner) > data_end)
+			return DROP_INVALID;
+		ip6_inner = (struct ipv6hdr *)(data + ihdr_off);
+
+		if (likely(ip6_inner->version == 6 && ip6_inner->nexthdr == IPPROTO_TCP)) {
+			tuple.nexthdr = ip6_inner->nexthdr;
+			hdrlen = ipv6_hdrlen(ctx, &tuple.nexthdr);
+			if (hdrlen < 0)
+				return hdrlen;
+
+			ipv6_addr_copy(&daddr, (union v6addr *)&ip6_inner->daddr);
+			ipv6_addr_copy(&saddr, (union v6addr *)&ip6_inner->saddr);
+
+			l4_off = ihdr_off + hdrlen;
+
+			if (ctx_load_bytes(ctx, l4_off, &tuple.sport, sizeof(tuple.sport)))  /* TCP source port */
+				return DROP_INVALID;
+
+			if (ctx_load_bytes(ctx, l4_off + sizeof(tuple.sport), &tuple.dport, sizeof(tuple.dport)))  /* TCP destination port */
+				return DROP_INVALID;
+		}
+	}
+#  endif
+
 	/* Retrieve destination identity. */
-	ipv6_addr_copy(&tuple.daddr, (union v6addr *)&ip6->daddr);
+	ipv6_addr_copy(&tuple.daddr, (union v6addr *)&daddr);
 	info = lookup_ip6_remote_endpoint(&tuple.daddr);
 	if (info && info->sec_label)
 		dst_id = info->sec_label;
 	cilium_dbg(ctx, info ? DBG_IP_ID_MAP_SUCCEED6 : DBG_IP_ID_MAP_FAILED6,
 		   tuple.daddr.p4, dst_id);
 
+#  ifndef ENABLE_IDENTITY_FROM_IPIP
 	/* Only enforce host policies for packets to host IPs. */
 	if (dst_id != HOST_ID)
 		return CTX_ACT_OK;
+#  endif
 
 	/* Lookup connection in conntrack map. */
-	tuple.nexthdr = ip6->nexthdr;
-	ipv6_addr_copy(&tuple.saddr, (union v6addr *)&ip6->saddr);
-	ipv6_addr_copy(&orig_sip, (union v6addr *)&ip6->saddr);
-	hdrlen = ipv6_hdrlen(ctx, &tuple.nexthdr);
-	if (hdrlen < 0)
-		return hdrlen;
-	l4_off = ETH_HLEN + hdrlen;
+	ipv6_addr_copy(&tuple.saddr, (union v6addr *)&saddr);
+	if (!l4_off) {
+		tuple.nexthdr = ip6->nexthdr;
+		hdrlen = ipv6_hdrlen(ctx, &tuple.nexthdr);
+		if (hdrlen < 0)
+			return hdrlen;
+		l4_off = ETH_HLEN + hdrlen;
+	}
 	ret = ct_lookup6(get_ct_map6(&tuple), &tuple, ctx, l4_off, CT_INGRESS,
 			 &ct_state, &trace->monitor);
 	if (ret < 0)
@@ -136,11 +220,11 @@ ipv6_host_policy_ingress(struct __ctx_buff *ctx, __u32 *src_id,
 	trace->reason = (enum trace_reason)ret;
 
 	/* Retrieve source identity. */
-	info = lookup_ip6_remote_endpoint(&orig_sip);
+	info = lookup_ip6_remote_endpoint(&saddr);
 	if (info && info->sec_label)
 		*src_id = info->sec_label;
 	cilium_dbg(ctx, info ? DBG_IP_ID_MAP_SUCCEED6 : DBG_IP_ID_MAP_FAILED6,
-		   orig_sip.p4, *src_id);
+		   saddr.p4, *src_id);
 
 	/* Reply traffic and related are allowed regardless of policy verdict. */
 	if (ret == CT_REPLY || ret == CT_RELATED)
@@ -236,7 +320,7 @@ ipv4_host_policy_egress(struct __ctx_buff *ctx, __u32 src_id,
 			struct trace_ctx *trace, __s8 *ext_err)
 {
 	struct ct_state ct_state_new = {}, ct_state = {};
-	int ret, verdict, l4_off, l3_off = ETH_HLEN;
+	int ret, verdict, l4_off = 0, l3_off = ETH_HLEN;
 	__u8 policy_match_type = POLICY_MATCH_NONE;
 	__u8 audited = 0;
 	struct remote_endpoint_info *info;
@@ -245,25 +329,57 @@ ipv4_host_policy_egress(struct __ctx_buff *ctx, __u32 src_id,
 	void *data, *data_end;
 	struct iphdr *ip4;
 	__u16 proxy_port = 0;
+	__be32 saddr, daddr;
+#  ifdef ENABLE_IDENTITY_FROM_IPIP
+	struct iphdr *ip4_inner;
+	int ihdr_off = 0;
+#  endif
 
+#  ifndef ENABLE_IDENTITY_FROM_IPIP
 	if (src_id != HOST_ID) {
-#  ifndef ENABLE_MASQUERADE
+#    ifndef ENABLE_MASQUERADE
 		return whitelist_snated_egress_connections(ctx, ipcache_srcid,
 							   trace);
-#  else
+#    else
 		/* Only enforce host policies for packets from host IPs. */
 		return CTX_ACT_OK;
-#  endif
+#    endif
 	}
+#  endif
 
 	if (!revalidate_data(ctx, &data, &data_end, &ip4))
 		return DROP_INVALID;
 
+    daddr = ip4->daddr;
+    saddr = ip4->saddr;
+
+#  ifdef ENABLE_IDENTITY_FROM_IPIP
+	if (ip4->protocol == IPPROTO_IPIP) {
+		/* IP in IP */
+
+		ihdr_off = l3_off + ipv4_hdrlen(ip4); /* offset of inner header - shifted by outer header length */
+
+		if (data + ihdr_off + sizeof(*ip4_inner) > data_end)
+			return DROP_INVALID;
+		ip4_inner = (struct iphdr*)(data + ihdr_off);
+
+		if (ip4_inner->version == 4 && ip4_inner->protocol == IPPROTO_TCP) {
+			daddr = ip4_inner->daddr;
+			saddr = ip4_inner->saddr;
+			tuple.nexthdr = ip4_inner->protocol;
+
+			l4_off = ihdr_off + ip4_inner->ihl * sizeof(__u32);
+		}
+	}
+#  endif
+
 	/* Lookup connection in conntrack map. */
-	tuple.nexthdr = ip4->protocol;
-	tuple.daddr = ip4->daddr;
-	tuple.saddr = ip4->saddr;
-	l4_off = l3_off + ipv4_hdrlen(ip4);
+	if (!l4_off) {
+		tuple.nexthdr = ip4->protocol;
+		tuple.daddr = ip4->daddr;
+		tuple.saddr = ip4->saddr;
+		l4_off = l3_off + ipv4_hdrlen(ip4);
+	}
 	ret = ct_lookup4(get_ct_map4(&tuple), &tuple, ctx, l4_off, CT_EGRESS,
 			 &ct_state, &trace->monitor);
 	if (ret < 0)
@@ -272,11 +388,11 @@ ipv4_host_policy_egress(struct __ctx_buff *ctx, __u32 src_id,
 	trace->reason = (enum trace_reason)ret;
 
 	/* Retrieve destination identity. */
-	info = lookup_ip4_remote_endpoint(ip4->daddr);
+	info = lookup_ip4_remote_endpoint(daddr);
 	if (info && info->sec_label)
 		dst_id = info->sec_label;
 	cilium_dbg(ctx, info ? DBG_IP_ID_MAP_SUCCEED4 : DBG_IP_ID_MAP_FAILED4,
-		   ip4->daddr, dst_id);
+		   daddr, dst_id);
 
 	/* Reply traffic and related are allowed regardless of policy verdict. */
 	if (ret == CT_REPLY || ret == CT_RELATED)
@@ -312,7 +428,7 @@ ipv4_host_policy_ingress(struct __ctx_buff *ctx, __u32 *src_id,
 			 struct trace_ctx *trace)
 {
 	struct ct_state ct_state_new = {}, ct_state = {};
-	int ret, verdict = CTX_ACT_OK, l4_off, l3_off = ETH_HLEN;
+	int ret, verdict = CTX_ACT_OK, l4_off = 0, l3_off = ETH_HLEN;
 	__u8 policy_match_type = POLICY_MATCH_NONE;
 	__u8 audited = 0;
 	__u32 dst_id = WORLD_ID;
@@ -322,26 +438,63 @@ ipv4_host_policy_ingress(struct __ctx_buff *ctx, __u32 *src_id,
 	void *data, *data_end;
 	struct iphdr *ip4;
 	__u16 proxy_port = 0;
+	__be32 saddr, daddr;
+#  ifdef ENABLE_IDENTITY_FROM_IPIP
+	struct iphdr *ip4_inner;
+	int ihdr_off = 0;
+#  endif
 
 	if (!revalidate_data(ctx, &data, &data_end, &ip4))
 		return DROP_INVALID;
 
+    daddr = ip4->daddr;
+    saddr = ip4->saddr;
+
+#  ifdef ENABLE_IDENTITY_FROM_IPIP
+	if (ip4->protocol == IPPROTO_IPIP) {
+		/* IP in IP */
+
+		ihdr_off = l3_off + ipv4_hdrlen(ip4); /* offset of inner header - shifted by outer header length */
+
+		if (data + ihdr_off + sizeof(*ip4_inner) > data_end)
+			return DROP_INVALID;
+		ip4_inner = (struct iphdr*)(data + ihdr_off);
+
+		if (ip4_inner->version == 4 && ip4_inner->protocol == IPPROTO_TCP) {
+			daddr = ip4_inner->daddr;
+			saddr = ip4_inner->saddr;
+			tuple.nexthdr = ip4_inner->protocol;
+
+			l4_off = ihdr_off + ip4_inner->ihl * sizeof(__u32);
+
+			if (ctx_load_bytes(ctx, l4_off, &tuple.sport, sizeof(tuple.sport)))  /* TCP source port */
+				return DROP_INVALID;
+			if (ctx_load_bytes(ctx, l4_off + sizeof(tuple.sport), &tuple.dport, sizeof(tuple.dport)))  /* TCP destination port */
+				return DROP_INVALID;
+		}
+	}
+#  endif
+
 	/* Retrieve destination identity. */
-	info = lookup_ip4_remote_endpoint(ip4->daddr);
+	info = lookup_ip4_remote_endpoint(daddr);
 	if (info && info->sec_label)
 		dst_id = info->sec_label;
 	cilium_dbg(ctx, info ? DBG_IP_ID_MAP_SUCCEED4 : DBG_IP_ID_MAP_FAILED4,
-		   ip4->daddr, dst_id);
+		   daddr, dst_id);
 
+#  ifndef ENABLE_IDENTITY_FROM_IPIP
 	/* Only enforce host policies for packets to host IPs. */
 	if (dst_id != HOST_ID)
 		return CTX_ACT_OK;
+#  endif
 
 	/* Lookup connection in conntrack map. */
-	tuple.nexthdr = ip4->protocol;
-	tuple.daddr = ip4->daddr;
-	tuple.saddr = ip4->saddr;
-	l4_off = l3_off + ipv4_hdrlen(ip4);
+	if (!l4_off) {
+		tuple.nexthdr = ip4->protocol;
+		tuple.daddr = ip4->daddr;
+		tuple.saddr = ip4->saddr;
+		l4_off = l3_off + ipv4_hdrlen(ip4);
+	}
 #  ifndef ENABLE_IPV4_FRAGMENTS
 	/* Indicate that this is a datagram fragment for which we cannot
 	 * retrieve L4 ports. Do not set flag if we support fragmentation.
@@ -356,11 +509,11 @@ ipv4_host_policy_ingress(struct __ctx_buff *ctx, __u32 *src_id,
 	trace->reason = (enum trace_reason)ret;
 
 	/* Retrieve source identity. */
-	info = lookup_ip4_remote_endpoint(ip4->saddr);
+	info = lookup_ip4_remote_endpoint(saddr);
 	if (info && info->sec_label)
 		*src_id = info->sec_label;
 	cilium_dbg(ctx, info ? DBG_IP_ID_MAP_SUCCEED4 : DBG_IP_ID_MAP_FAILED4,
-		   ip4->saddr, *src_id);
+		   saddr, *src_id);
 
 	/* Reply traffic and related are allowed regardless of policy verdict. */
 	if (ret == CT_REPLY || ret == CT_RELATED)
