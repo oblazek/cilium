@@ -123,6 +123,7 @@ cilium-agent [flags]
       --enable-nat46x64-gateway                                 Enable NAT46 and NAT64 gateway
       --enable-node-port                                        Enable NodePort type services by Cilium
       --enable-pmtu-discovery                                   Enable path MTU discovery to send ICMP fragmentation-needed replies to the client
+      --enable-per-node-identity                                Enable use of remote node identity
       --enable-policy string                                    Enable policy enforcement (default "default")
       --enable-recorder                                         Enable BPF datapath pcap recorder
       --enable-remote-node-identity                             Enable use of remote node identity
