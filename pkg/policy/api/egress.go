@@ -100,6 +100,9 @@ type EgressCommonRule struct {
 	// +kubebuilder:validation:Optional
 	ToGroups []ToGroups `json:"toGroups,omitempty"`
 
+	// +kubebuilder:validation:Optional
+	ToNodes []EndpointSelector `json:"toNodes,omitempty"`
+
 	// TODO: Move this to the policy package
 	// (https://github.com/cilium/cilium/issues/8353)
 	aggregatedSelectors EndpointSelectorSlice `json:"-"`
@@ -296,6 +299,7 @@ func (e *EgressCommonRule) getDestinationEndpointSelectorsWithRequirements(
 		}
 	} else {
 		res = append(res, e.ToEndpoints...)
+		res = append(res, e.ToNodes...)
 	}
 	return append(res, e.aggregatedSelectors...)
 }
