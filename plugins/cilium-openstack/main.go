@@ -63,9 +63,6 @@ func init() {
 	flags.BoolP(config.DebugArg, "D", false, "Enable debug messages")
 	option.BindEnv(config.DebugArg)
 
-	flags.String(config.CiliumAPI, "", "URI to server-side API")
-	option.BindEnv(config.CiliumAPI)
-
 	flags.String(config.PluginMode, defaults.PluginMode, "Mode in which this plugin should run")
 	option.BindEnv(config.PluginMode)
 
@@ -83,6 +80,9 @@ func init() {
 
 	flags.String(option.K8sKubeConfigPath, "", "Absolute path of the kubernetes kubeconfig file")
 	option.BindEnv(option.K8sKubeConfigPath)
+
+	flags.String(config.PrometheusServeAddr, ":8080", "Address to serve Prometheus metrics")
+	option.BindEnv(config.PrometheusServeAddr)
 
 	viper.BindPFlags(flags)
 }

@@ -6,9 +6,6 @@ import (
 )
 
 const (
-	// CiliumAPI ...
-	CiliumAPI = "cilium-api"
-
 	// PluginMode ...
 	PluginMode = "plugin-mode"
 
@@ -29,16 +26,20 @@ const (
 
 	// K8sKubeConfigPath is the absolute path of the kubernetes kubeconfig file
 	K8sKubeConfigPath = "k8s-kubeconfig-path"
+
+	// PrometheusServeAddr IP:Port on which to serve prometheus metrics (pass ":Port" to bind on all interfaces, "" is off)
+	PrometheusServeAddr = "prometheus-serve-addr"
 )
 
 // PluginConfig is the configuration used by cilium-openstack plugin
 type PluginConfig struct {
-	CiliumSockPath    string
-	Debug             bool
-	PluginMode        string
-	ClusterName       string
-	K8sKubeConfigPath string
-	K8sAPIServer      string
+	CiliumSockPath      string
+	Debug               bool
+	PluginMode          string
+	ClusterName         string
+	K8sKubeConfigPath   string
+	K8sAPIServer        string
+	PrometheusServeAddr string
 }
 
 var (
@@ -50,10 +51,10 @@ var (
 
 // Populate sets all options with the values from viper
 func (c *PluginConfig) Populate() {
-	c.CiliumSockPath = viper.GetString(CiliumAPI)
 	c.Debug = viper.GetBool(DebugArg)
 	c.PluginMode = viper.GetString(PluginMode)
 	c.ClusterName = viper.GetString(ClusterName)
 	c.K8sKubeConfigPath = viper.GetString(K8sKubeConfigPath)
 	c.K8sAPIServer = viper.GetString(K8sAPIServer)
+	c.PrometheusServeAddr = viper.GetString(PrometheusServeAddr)
 }

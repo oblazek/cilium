@@ -6,10 +6,10 @@ import (
 	"fmt"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
-	"github.com/cilium/cilium/api/v1/client/endpoint"
 	"github.com/cilium/cilium/api/v1/models"
 	"github.com/cilium/cilium/pkg/labels"
 	"github.com/cilium/cilium/pkg/logging/logfields"
@@ -19,6 +19,7 @@ import (
 	"github.com/vishvananda/netlink"
 
 	k8sConst "github.com/cilium/cilium/pkg/k8s/apis/cilium.io"
+	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
 // Structure `domain` (and structures used in it) is based on class LibvirtConfigGuestMetaNovaInstance and method `_get_guest_config_meta/format_dom` =>
@@ -147,6 +148,7 @@ func (p *plugin) runBridgeDaemon() error {
 
 	conn, err := libvirt.NewConnect("qemu+unix:///system?socket=/var/run/libvirt/libvirt-sock")
 	if err != nil {
+		log.WithError(err).Fatal("failed to connect to libvirt socket")
 	}
 	defer conn.Close()
 
@@ -155,23 +157,18 @@ func (p *plugin) runBridgeDaemon() error {
 	// run once on startup, then handle each event
 	p.dumpAndRegisterDomains(ctx)
 
-	//go func() {
-	//	ticker := time.NewTicker(5 * time.Minute)
+	err = p.runInitialEndpointCleanup()
+	if err != nil {
+		log.WithError(err).Error("unable to do initial endpoint cleanup")
+	}
 
-	//	for {
-	//		select {
-	//		case <-ctx.Done():
-	//			ticker.Stop()
-	//		case <-ticker.C:
-	//			//p.runPeriodicalEndpointCleanup(ctx)
-	//		}
-	//	}
-	//}()
-
+	// subscribe to lifecycle events (create/update/delete)
 	_, err = conn.DomainEventLifecycleRegister(nil, p.cbLifecycle)
 	if err != nil {
 		log.Error("failed to register domain lifecycle event: ", err)
 	}
+
+	// subscribe to metadata updates (e.g. labels)
 	_, err = conn.DomainEventMetadataChangeRegister(nil, p.cbMetadadaChanged)
 	if err != nil {
 		log.Error("failed to register domain metadata changed event: ", err)
@@ -242,11 +239,30 @@ func (p *plugin) unregisterDomain(d libvirt.Domain) error {
 	return p.deleteDomain(name)
 }
 
-func (p *plugin) runPeriodicalEndpointCleanup() {
-	// TODO (oblazek)
-	// if this plugin fails, user might detach or destroy vm
-	// and as we might miss it, we need to get it from cilium
-	// and clean it up
+func (p *plugin) runInitialEndpointCleanup() error {
+	// make initial cilium endpoint list
+	// loop through all cilium endpoints and find those that are not present in domainIPMappings
+	// if endpoint is not present in the mapping we should delete it from cilium endpoints
+	epList, err := p.ciliumClient.EndpointList()
+	if err != nil {
+		return err
+	}
+
+	for _, ep := range epList {
+		found := false
+		for _, val := range p.domainIfaceMappings {
+			for ifaceUUID := range val {
+				if ep.Status.ExternalIdentifiers.ContainerID == ifaceUUID {
+					found = true
+					break
+				}
+			}
+		}
+		if !found {
+			p.deleteEndpoint(ep.Status.ExternalIdentifiers.ContainerID)
+		}
+	}
+	return nil
 }
 
 func (p *plugin) updateOrCreateDomain(dom *domain) error {
@@ -270,8 +286,9 @@ func (p *plugin) updateOrCreateDomain(dom *domain) error {
 		err = p.updateExistingEndpoint(iface.UUID, lbls)
 		if err != nil {
 			log.Warn(err)
+			return err
 		}
-		// store domain<->iface mapping
+		// store domain<->iface mapping on success
 		p.domainIfaceMappings[dom.Name][iface.UUID] = true
 	}
 
@@ -361,21 +378,37 @@ func (p *plugin) createNewEndpoint(uuid string, lbls models.Labels, domain *doma
 		Addressing:     addressPair,
 	}
 
-	if err := p.ciliumClient.EndpointCreate(endpoint); err != nil {
-		log.WithFields(
-			logrus.Fields{
-				"endpoint-id": uuid,
-				"error":       err,
-			}).
-			Warn("Error while creating the endpoint")
-		return err
+	for {
+		if err := p.ciliumClient.EndpointCreate(endpoint); err != nil {
+			if strings.Contains(err.Error(), "putEndpointIdInvalid") {
+				log.WithFields(
+					logrus.Fields{
+						"endpoint-id": uuid,
+					}).
+					Info("endpoint already registered, continuing...")
+				break
+			}
+			log.WithFields(
+				logrus.Fields{
+					"endpoint-id": uuid,
+				}).
+				Warn(err)
+			// keep trying if daemon is not ready
+			if !p.isDaemonReady() {
+				time.Sleep(2 * time.Second)
+				continue
+			}
+		} else {
+			log.WithField(logfields.EndpointID, uuid).Debug("Created new endpoint")
+		}
+		break
 	}
 
-	log.WithField(logfields.EndpointID, uuid).Debug("Created new endpoint")
 	return err
 }
 
 func (p *plugin) updateExistingEndpoint(domainUUID string, lbls models.Labels) error {
+	var err error
 	log.Debugf("New labels: %v for endpoint %v", lbls, domainUUID)
 
 	ecr := &models.EndpointChangeRequest{
@@ -385,34 +418,50 @@ func (p *plugin) updateExistingEndpoint(domainUUID string, lbls models.Labels) e
 		Labels:            lbls,
 	}
 
-	err := p.ciliumClient.EndpointPatch(endpointID(ecr.ContainerID), ecr)
-	if err != nil && err.Error() == endpoint.NewPatchEndpointIDNotFound().Error() {
-		log.WithFields(
-			logrus.Fields{
-				"endpoint-uuid": domainUUID,
-				"labels":        lbls,
-				"error":         err,
-			}).
-			Warn("Unable to patch endpoint, endpoint not found")
-		return err
+	for {
+		err = p.ciliumClient.EndpointPatch(endpointID(ecr.ContainerID), ecr)
+		if err != nil {
+			log.WithFields(
+				logrus.Fields{
+					"endpoint-id": domainUUID,
+					"labels":      lbls,
+					"error":       err,
+				}).
+				Error("Error while updating existing endpoint")
+
+			if !p.isDaemonReady() {
+				time.Sleep(2 * time.Second)
+				continue
+			}
+		} else {
+			log.WithField(logfields.Endpoint, ecr.ContainerID).Debug("Patched endpoint succesfully")
+		}
+		break
 	}
-	log.WithField(logfields.Endpoint, ecr.ContainerID).Debug("Patched endpoint succesfully")
-	return nil
+	return err
 }
 
 func (p *plugin) deleteEndpoint(domainUUID string) error {
-	err := p.ciliumClient.EndpointDelete(endpointID(domainUUID))
-	if err != nil {
-		log.WithFields(
-			logrus.Fields{
-				"endpoint-id": domainUUID,
-				"error":       err,
-			}).
-			Error("Error while deleting the endpoint")
-		return err
+	var err error
+	for {
+		err = p.ciliumClient.EndpointDelete(endpointID(domainUUID))
+		if err != nil {
+			log.WithFields(
+				logrus.Fields{
+					"endpoint-id": domainUUID,
+					"error":       err,
+				}).
+				Error("Error while deleting the endpoint")
+			if !p.isDaemonReady() {
+				time.Sleep(2 * time.Second)
+				continue
+			}
+		} else {
+			log.WithField(logfields.EndpointID, domainUUID).Debug("Deleted endpoint succesfully")
+		}
+		break
 	}
-	log.WithField(logfields.EndpointID, domainUUID).Debug("Deleted endpoint succesfully")
-	return nil
+	return err
 }
 
 func (p *plugin) getPortBasedLabels(instanceMetadata instance, sgIDs []sgID) models.Labels {
@@ -427,8 +476,9 @@ func (p *plugin) getPortBasedLabels(instanceMetadata instance, sgIDs []sgID) mod
 
 	ctx, cancel := context.WithTimeout(context.Background(), 3*time.Second)
 	defer cancel()
-	ns, err := p.k8sClient.GetNamespace(ctx, instanceMetadata.Owner.Project)
+	ns, err := p.k8sClient.CoreV1().Namespaces().Get(ctx, instanceMetadata.Owner.Project, metav1.GetOptions{})
 	if err != nil {
+		// TODO add metric
 		log.Error("failed to get namespace from k8s: ", err)
 	} else {
 		nsMap := ns.GetLabels()

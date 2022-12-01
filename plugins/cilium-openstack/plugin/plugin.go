@@ -2,40 +2,40 @@ package plugin
 
 import (
 	"context"
-	"fmt"
 	"os"
 	"time"
 
+	"github.com/cilium/cilium/api/v1/client/daemon"
+	"github.com/cilium/cilium/pkg/metrics"
+
+	"github.com/cilium/cilium/pkg/client"
 	"github.com/cilium/cilium/pkg/defaults"
 	endpointIDPkg "github.com/cilium/cilium/pkg/endpoint/id"
-
-	"github.com/cilium/cilium/api/v1/models"
-	"github.com/cilium/cilium/pkg/client"
 	"github.com/cilium/cilium/pkg/k8s"
 	k8sconfig "github.com/cilium/cilium/pkg/k8s/config"
 	"github.com/cilium/cilium/pkg/logging"
 	"github.com/cilium/cilium/pkg/logging/logfields"
+
 	libvirt "github.com/libvirt/libvirt-go-module"
 
 	"github.com/cilium/cilium/plugins/cilium-openstack/config"
-	k8sClient "github.com/cilium/cilium/plugins/cilium-openstack/pkg/k8s"
 )
 
 var log = logging.DefaultLogger.WithField(logfields.LogSubsys, "cilium-openstack-plugin")
 
 type plugin struct {
-	ciliumClient        *client.Client
-	clientStatus        clientStatus
-	libvirtConn         *libvirt.Connect
-	k8sClient           *k8sClient.Client
-	conf                models.DaemonConfigurationStatus
-	hostname            string
+	ciliumClient *client.Client
+	daemonStatus daemonStatus
+	libvirtConn  *libvirt.Connect
+	k8sClient    *k8s.K8sClient
+	hostname     string
+	// domainIfaceMappings contains domainName/ifaceUUID/bool mapping
+	// true value means the domain is present (is created)
 	domainIfaceMappings map[string]map[string]bool
 }
 
-type clientStatus struct {
+type daemonStatus struct {
 	ready bool
-	err   error
 }
 
 func endpointID(id string) string {
@@ -52,8 +52,7 @@ func NewPlugin() error {
 
 	c, err := client.NewClient(config.Config.CiliumSockPath)
 	if err != nil {
-		log.WithError(err).Fatal("Error while starting cilium-client")
-		return err
+		log.WithError(err).Fatal("Unable to initialize new cilium daemon client")
 	}
 
 	hostname, err := os.Hostname()
@@ -63,7 +62,7 @@ func NewPlugin() error {
 
 	p := &plugin{
 		ciliumClient:        c,
-		clientStatus:        clientStatus{},
+		daemonStatus:        daemonStatus{},
 		hostname:            hostname,
 		domainIfaceMappings: make(map[string]map[string]bool),
 	}
@@ -77,12 +76,13 @@ func NewPlugin() error {
 		log.WithError(err).Fatal("Unable to connect to Kubernetes apiserver")
 	}
 
-	p.k8sClient = k8sClient.New()
+	p.k8sClient = k8s.Client()
 
-	go p.runClientChecker(ctx)
+	go p.runDaemonChecker(ctx)
 
-	if err := p.waitUntilClientIsReady(30 * time.Second); err != nil {
-		log.WithError(err).Fatal("Unable to connect to cilium daemon")
+	if config.Config.PrometheusServeAddr != "" {
+		log.Infof("Serving prometheus metrics on %s", config.Config.PrometheusServeAddr)
+		_ = metrics.Enable(config.Config.PrometheusServeAddr)
 	}
 
 	// Bridge mode
@@ -100,47 +100,27 @@ func NewPlugin() error {
 	return nil
 }
 
-func (p *plugin) waitUntilClientIsReady(duration time.Duration) error {
-	if duration > 0 {
-		log.Info("Waiting for cilium daemon to start up...")
-	}
-	t := time.Now().Add(duration)
-	for duration == 0 || time.Until(t) > 0 {
-		if p.clientStatus.ready {
-			return nil
-		}
-		log.Info("Sleeping, as cilium daemon is not ready...")
-		time.Sleep(1 * time.Second)
-	}
-	return p.clientStatus.err
-}
-
-func (p *plugin) runClientChecker(ctx context.Context) {
-	ticker := time.NewTicker(5 * time.Second)
+func (p *plugin) runDaemonChecker(ctx context.Context) {
+	params := daemon.NewGetHealthzParamsWithTimeout(5 * time.Second)
+	ticker := time.NewTicker(2 * time.Second)
 	defer ticker.Stop()
 
-	prevReady := false
-
 	for {
-		res, err := p.ciliumClient.ConfigGet()
+		res, err := p.ciliumClient.Daemon.GetHealthz(params)
 		if err != nil {
-			log.WithError(err).Error("Client is not ready")
-			p.clientStatus.ready = false
-			p.clientStatus.err = err
+			p.daemonStatus.ready = false
+			log.Info("Waiting for cilium daemon")
 		} else if res != nil {
-			if res.Status.Addressing == nil || (res.Status.Addressing.IPV4 == nil && res.Status.Addressing.IPV6 == nil) {
-				p.clientStatus.ready = false
-				p.clientStatus.err = fmt.Errorf("Invalid addressing information from daemon")
-			} else {
-				if !prevReady {
-					p.conf = *res.Status
+			if res.Payload.Cilium.State == "Ok" {
+				if !p.daemonStatus.ready {
 					log.Info("Connected to cilium daemon")
+					p.daemonStatus.ready = true
 				}
-				p.clientStatus.ready = true
-				p.clientStatus.err = err
+			} else {
+				log.Info("Agent not ok yet")
+				p.daemonStatus.ready = false
 			}
 		}
-		prevReady = p.clientStatus.ready
 
 		select {
 		case <-ctx.Done():
@@ -150,4 +130,8 @@ func (p *plugin) runClientChecker(ctx context.Context) {
 			continue
 		}
 	}
+}
+
+func (p *plugin) isDaemonReady() bool {
+	return p.daemonStatus.ready
 }
