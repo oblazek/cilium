@@ -22,6 +22,11 @@ import (
 	metav1 "k8s.io/apimachinery/pkg/apis/meta/v1"
 )
 
+const (
+	// we want this to match realm based on namespace labels
+	realmLabel = k8sConst.PodNamespaceMetaLabels + "." + "realm"
+)
+
 // Structure `domain` (and structures used in it) is based on class LibvirtConfigGuestMetaNovaInstance and method `_get_guest_config_meta/format_dom` =>
 // https://github.com/openstack/nova/blob/b8cc5704558d3c08fda9db2f1bb7fecb2bcd985d/nova/virt/libvirt/driver.py#L5596
 // Might change a little based on openstack version and it's patches.
@@ -483,7 +488,7 @@ func (p *plugin) getPortBasedLabels(instanceMetadata instance, sgIDs []sgID) mod
 	} else {
 		nsMap := ns.GetLabels()
 		if realm, ok := nsMap["scif.cz/realm"]; ok {
-			lbls["realm"] = realm
+			lbls[realmLabel] = realm
 		}
 	}
 	// set instance labels and project name / namespace
