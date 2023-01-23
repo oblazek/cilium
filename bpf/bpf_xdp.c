@@ -127,6 +127,7 @@ int tail_lb_ipv4(struct __ctx_buff *ctx)
 
 static __always_inline int check_v4_lb(struct __ctx_buff *ctx)
 {
+	ep_tail_call(ctx, CILIUM_CALL_SZN_FOREIGN); /* if calling of SZN_FOREIGN tailcall fails, the following one is called */
 	ep_tail_call(ctx, CILIUM_CALL_IPV4_FROM_NETDEV);
 	return send_drop_notify_error(ctx, 0, DROP_MISSED_TAIL_CALL, CTX_ACT_DROP,
 				      METRIC_INGRESS);
@@ -190,6 +191,7 @@ int tail_lb_ipv6(struct __ctx_buff *ctx)
 
 static __always_inline int check_v6_lb(struct __ctx_buff *ctx)
 {
+	ep_tail_call(ctx, CILIUM_CALL_SZN_FOREIGN); /* if calling of SZN_FOREIGN tailcall fails, the following one is called */
 	ep_tail_call(ctx, CILIUM_CALL_IPV6_FROM_NETDEV);
 	return send_drop_notify_error(ctx, 0, DROP_MISSED_TAIL_CALL, CTX_ACT_DROP,
 				      METRIC_INGRESS);
