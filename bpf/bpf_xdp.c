@@ -67,6 +67,16 @@ struct {
 #endif /* CIDR4_LPM_PREFILTER */
 #endif /* CIDR4_FILTER */
 
+#define CILIUM_MAP_SZN_XDP     0x00535a4e
+struct
+{
+    __uint(type, BPF_MAP_TYPE_PROG_ARRAY);
+    __type(key, __u32);
+    __type(value, __u32);
+    __uint(pinning, 0); // PIN_NONE to not create pin file in bpffs
+    __uint(max_entries, 1);
+} szn_xdpcalls_map __section_maps_btf;
+
 #ifdef CIDR6_FILTER
 struct {
 	__uint(type, BPF_MAP_TYPE_HASH);
@@ -212,6 +222,7 @@ static __always_inline int check_v4_lb(struct __ctx_buff *ctx)
 	__s8 ext_err = 0;
 	int ret;
 
+	tail_call_static(ctx, szn_xdpcalls_map, CILIUM_MAP_SZN_XDP); /* if calling of SZN_FOREIGN tailcall fails, the following one is called */
 	ret = tail_call_internal(ctx, CILIUM_CALL_IPV4_FROM_NETDEV, &ext_err);
 	return send_drop_notify_error_ext(ctx, UNKNOWN_ID, ret, ext_err, METRIC_INGRESS);
 }
@@ -290,6 +301,7 @@ static __always_inline int check_v6_lb(struct __ctx_buff *ctx)
 	__s8 ext_err = 0;
 	int ret;
 
+	tail_call_static(ctx, szn_xdpcalls_map, CILIUM_MAP_SZN_XDP); /* if calling of SZN_FOREIGN tailcall fails, the following one is called */
 	ret = tail_call_internal(ctx, CILIUM_CALL_IPV6_FROM_NETDEV, &ext_err);
 	return send_drop_notify_error_ext(ctx, UNKNOWN_ID, ret, ext_err, METRIC_INGRESS);
 }
