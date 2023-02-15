@@ -1093,6 +1093,9 @@ func initializeFlags() {
 	flags.MarkHidden(option.EnableStaleCiliumEndpointCleanup)
 	option.BindEnv(Vp, option.EnableStaleCiliumEndpointCleanup)
 
+	flags.Bool(option.SZNAlwaysPass, false, "Always return CTX_ACT_OK within send_drop_notify() function")
+	option.BindEnv(Vp, option.SZNAlwaysPass)
+
 	if err := Vp.BindPFlags(flags); err != nil {
 		log.Fatalf("BindPFlags failed: %s", err)
 	}

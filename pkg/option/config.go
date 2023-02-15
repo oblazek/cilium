@@ -1128,6 +1128,9 @@ const (
 	// EnableStaleCiliumEndpointCleanup sets whether Cilium should perform cleanup of
 	// stale CiliumEndpoints during init.
 	EnableStaleCiliumEndpointCleanup = "enable-stale-cilium-endpoint-cleanup"
+
+	// Always return CTX_ACT_OK within send_drop_notify() function
+	SZNAlwaysPass = "szn-always-pass"
 )
 
 // Default string arguments
@@ -2312,6 +2315,9 @@ type DaemonConfig struct {
 	// This will attempt to remove local CiliumEndpoints that are not managed by Cilium
 	// following Endpoint restoration.
 	EnableStaleCiliumEndpointCleanup bool
+
+	// Always return CTX_ACT_OK within send_drop_notify() function
+	SZNAlwaysPass bool
 }
 
 var (
@@ -3376,6 +3382,9 @@ func (c *DaemonConfig) Populate(vp *viper.Viper) {
 		}
 	}
 	c.EnvoySecretNamespaces = nsList
+
+	// Always return CTX_ACT_OK within send_drop_notify() function
+	c.SZNAlwaysPass = viper.GetBool(SZNAlwaysPass)
 }
 
 func (c *DaemonConfig) additionalMetrics() []string {
