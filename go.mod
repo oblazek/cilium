@@ -25,7 +25,7 @@ require (
 	github.com/cilium/kafka v0.0.0-20180809090225-01ce283b732b
 	github.com/cilium/lumberjack/v2 v2.3.0
 	github.com/cilium/proxy v0.0.0-20230205220247-5b9c892d59cd
-	github.com/cilium/workerpool v1.1.3
+	github.com/cilium/workerpool v1.2.0
 	github.com/containernetworking/cni v1.1.2
 	github.com/containernetworking/plugins v1.1.1
 	github.com/coreos/go-systemd/v22 v22.5.0
