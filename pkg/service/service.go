@@ -239,7 +239,10 @@ type Service struct {
 	svcByID   map[lb.ID]*svcInfo
 
 	backendRefCount counter.StringCounter
-	backendByHash   map[string]*lb.Backend
+	// only used to keep track of the existing hash->ID mapping
+	// for loadbalancing logic the backends, backendsByHash in
+	// each svc's svcInfo is used
+	backendByHash map[string]*lb.Backend
 
 	healthServer  healthServer
 	monitorNotify monitorNotify
@@ -1557,14 +1560,11 @@ func (s *Service) updateBackendsCacheLocked(svc *svcInfo, backends []*lb.Backend
 						backend.L3n4Addr, err)
 				}
 				backends[i].ID = id
-				backends[i].Weight = backend.Weight
 				newBackends = append(newBackends, backends[i])
-				// TODO make backendByHash by value not by ref
 				s.backendByHash[hash] = backends[i]
 			} else {
 				backends[i].ID = s.backendByHash[hash].ID
 			}
-			svc.backendByHash[hash] = backends[i]
 		} else {
 			backends[i].ID = b.ID
 			// Backend state can either be updated via kubernetes events,
@@ -1594,6 +1594,7 @@ func (s *Service) updateBackendsCacheLocked(svc *svcInfo, backends []*lb.Backend
 				backends[i].State = b.State
 			}
 		}
+		svc.backendByHash[hash] = backends[i]
 	}
 
 	for hash, backend := range svc.backendByHash {
