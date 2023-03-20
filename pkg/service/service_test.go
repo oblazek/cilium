@@ -1377,6 +1377,54 @@ func (m *ManagerTestSuite) TestUpsertServiceWithZeroWeightBackends(c *C) {
 	c.Assert(m.lbmap.DummyMaglevTable[uint16(id1)], Equals, 1)
 }
 
+// Tests that consecutive upsert service doesn't break it's internal state.
+// (svcInfo.backends and svcInfo.backendByHash need to point to same objects)
+func (m *ManagerTestSuite) TestConsecutiveUpsertService(c *C) {
+	option.Config.NodePortAlg = option.NodePortAlgMaglev
+	backends := make([]*lb.Backend, 0, len(backends1))
+	for _, b := range backends1 {
+		backends = append(backends, b.DeepCopy())
+	}
+	backends[0].State = lb.BackendStateActive
+	backends[1].State = lb.BackendStateActive
+	hash0 := backends[0].L3n4Addr.Hash()
+	hash1 := backends[1].L3n4Addr.Hash()
+	p := &lb.SVC{
+		Frontend:                  frontend1,
+		Backends:                  backends,
+		Type:                      lb.SVCTypeNodePort,
+		ExtTrafficPolicy:          lb.SVCTrafficPolicyCluster,
+		IntTrafficPolicy:          lb.SVCTrafficPolicyCluster,
+		SessionAffinity:           true,
+		SessionAffinityTimeoutSec: 100,
+		Name: lb.ServiceName{
+			Name:      "svc1",
+			Namespace: "ns1",
+		},
+	}
+	svcHash := p.Frontend.Hash()
+
+	created, _, err := m.svc.UpsertService(p)
+	c.Assert(err, IsNil)
+	c.Assert(created, Equals, true)
+	p1 := m.svc.svcByHash[svcHash].backendByHash[hash0]
+	p2 := m.svc.svcByHash[svcHash].backends[0]
+	c.Assert(p1, Equals, p2, Commentf("first ptr: %p, second ptr: %p", p1, p2))
+	p1 = m.svc.svcByHash[svcHash].backendByHash[hash1]
+	p2 = m.svc.svcByHash[svcHash].backends[1]
+	c.Assert(p1, Equals, p2, Commentf("first ptr: %p, second ptr: %p", p1, p2))
+
+	created, _, err = m.svc.UpsertService(p)
+	c.Assert(err, IsNil)
+	c.Assert(created, Equals, false)
+	p1 = m.svc.svcByHash[svcHash].backendByHash[hash0]
+	p2 = m.svc.svcByHash[svcHash].backends[0]
+	c.Assert(p1, Equals, p2, Commentf("first ptr: %p, second ptr: %p", p1, p2))
+	p1 = m.svc.svcByHash[svcHash].backendByHash[hash1]
+	p2 = m.svc.svcByHash[svcHash].backends[1]
+	c.Assert(p1, Equals, p2, Commentf("first ptr: %p, second ptr: %p", p1, p2))
+}
+
 func Test_filterServiceBackends(t *testing.T) {
 	t.Run("filter by port number", func(t *testing.T) {
 		svc := &svcInfo{

@@ -239,9 +239,8 @@ type Service struct {
 	svcByID   map[lb.ID]*svcInfo
 
 	backendRefCount counter.StringCounter
-	// only used to keep track of the existing hash->ID mapping
-	// for loadbalancing logic the backends, backendsByHash in
-	// each svc's svcInfo is used
+	// Hashed `backends`; pointing to the same objects.
+	// This is expected in code and should never break.
 	backendByHash map[string]*lb.Backend
 
 	healthServer  healthServer
@@ -1556,6 +1555,7 @@ func (s *Service) updateBackendsCacheLocked(svc *svcInfo, backends []*lb.Backend
 			if s.backendRefCount.Add(hash) {
 				id, err := AcquireBackendID(backend.L3n4Addr)
 				if err != nil {
+					s.backendRefCount.Delete(hash)
 					return nil, nil, nil, fmt.Errorf("Unable to acquire backend ID for %q: %s",
 						backend.L3n4Addr, err)
 				}
