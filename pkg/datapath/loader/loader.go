@@ -463,11 +463,30 @@ func (l *Loader) ReloadDatapath(ctx context.Context, ep datapath.Endpoint, stats
 func (l *Loader) Unload(ep datapath.Endpoint) {
 	if ep.RequireEndpointRoute() {
 		if ip := ep.IPv4Address(); ip.IsValid() {
-			removeEndpointRoute(ep, *iputil.AddrToIPNet(ip))
+			// this flag is set in openstack and we don't want cilium to remove
+			// ip route, let openstack itself handle that
+			if !ep.DisableSIPVerification() {
+				removeEndpointRoute(ep, *iputil.AddrToIPNet(ip))
+			}
 		}
 
 		if ip := ep.IPv6Address(); ip.IsValid() {
-			removeEndpointRoute(ep, *iputil.AddrToIPNet(ip))
+			if !ep.DisableSIPVerification() {
+				removeEndpointRoute(ep, *iputil.AddrToIPNet(ip))
+			}
+		}
+
+		// remove remaining bpf program (maps are cleaned up in the calling func)
+		// to be on the safe side and have the possibility to disconnect endpoint
+		if ep.DisableSIPVerification() {
+			link, err := netlink.LinkByName(ep.InterfaceName())
+			if err != nil {
+				log.Error(err)
+			}
+			if err = deleteQdisc(link); err != nil {
+				log.Error(err)
+			}
+
 		}
 	}
 }
