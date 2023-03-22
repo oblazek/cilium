@@ -3391,7 +3391,7 @@ func (c *DaemonConfig) Populate(vp *viper.Viper) {
 	c.EnvoySecretNamespaces = nsList
 
 	// Always return CTX_ACT_OK within send_drop_notify() function
-	c.SZNAlwaysPass = viper.GetBool(SZNAlwaysPass)
+	c.SZNAlwaysPass = vp.GetBool(SZNAlwaysPass)
 }
 
 func (c *DaemonConfig) additionalMetrics() []string {
