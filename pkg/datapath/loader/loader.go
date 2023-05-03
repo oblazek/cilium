@@ -5,6 +5,7 @@ package loader
 
 import (
 	"context"
+	"errors"
 	"fmt"
 	"net"
 	"os"
@@ -24,6 +25,7 @@ import (
 	"github.com/cilium/cilium/pkg/defaults"
 	"github.com/cilium/cilium/pkg/elf"
 	iputil "github.com/cilium/cilium/pkg/ip"
+	ipamOption "github.com/cilium/cilium/pkg/ipam/option"
 	"github.com/cilium/cilium/pkg/lock"
 	"github.com/cilium/cilium/pkg/logging"
 	"github.com/cilium/cilium/pkg/logging/logfields"
@@ -651,7 +653,33 @@ func (l *Loader) Unload(ep datapath.Endpoint) {
 		}
 
 		if ip := ep.IPv6Address(); ip.IsValid() {
-			removeEndpointRoute(ep, *iputil.AddrToIPNet(ip))
+			if option.Config.IPAM != ipamOption.IPAMCalico {
+				removeEndpointRoute(ep, *iputil.AddrToIPNet(ip))
+			}
+		}
+
+		// remove remaining bpf program (maps are cleaned up in the calling func)
+		// to be on the safe side and have the possibility to disconnect endpoint
+		if option.Config.IPAM == ipamOption.IPAMCalico {
+			link, err := netlink.LinkByName(ep.InterfaceName())
+			if err != nil {
+				if errors.As(err, &netlink.LinkNotFoundError{}) {
+					log.WithFields(logrus.Fields{
+						"iface": ep.InterfaceName(),
+						"ipv4":  ep.IPv4Address(),
+					}).Info("LinkNotFound, skipping qdisc deletion...")
+				} else {
+					log.WithFields(logrus.Fields{
+						"iface": ep.InterfaceName(),
+						"ipv4":  ep.IPv4Address(),
+					}).Error(err)
+				}
+				return
+			}
+			if err = deleteQdisc(link); err != nil {
+				log.Error(err)
+			}
+
 		}
 	}
 

@@ -41,6 +41,21 @@ func directionToParent(dir string) uint32 {
 	return 0
 }
 
+func deleteQdisc(link netlink.Link) error {
+	attrs := netlink.QdiscAttrs{
+		LinkIndex: link.Attrs().Index,
+		Handle:    netlink.MakeHandle(0xffff, 0),
+		Parent:    netlink.HANDLE_CLSACT,
+	}
+
+	qdisc := &netlink.GenericQdisc{
+		QdiscAttrs: attrs,
+		QdiscType:  "clsact",
+	}
+
+	return netlink.QdiscDel(qdisc)
+}
+
 func replaceQdisc(link netlink.Link) error {
 	attrs := netlink.QdiscAttrs{
 		LinkIndex: link.Attrs().Index,
