@@ -41,6 +41,8 @@ var (
 	dissectLock lock.Mutex
 	parser      *gopacket.DecodingLayerParser
 
+	dummyEthernetHeader = make([]byte, 14)
+
 	log = logging.DefaultLogger.WithField(logfields.LogSubsys, "monitor")
 )
 
@@ -143,7 +145,7 @@ func GetConnectionInfo(data []byte) *ConnectionInfo {
 	defer dissectLock.Unlock()
 
 	initParser()
-	parser.DecodeLayers(data, &cache.decoded)
+	decodeLayers(data, &cache.decoded)
 
 	c, _, _ := getConnectionInfoFromCache()
 	return c
@@ -159,7 +161,7 @@ func GetConnectionSummary(data []byte) string {
 	defer dissectLock.Unlock()
 
 	initParser()
-	parser.DecodeLayers(data, &cache.decoded)
+	decodeLayers(data, &cache.decoded)
 
 	c, hasIP, hasEth := getConnectionInfoFromCache()
 	srcIP, dstIP := c.SrcIP, c.DstIP
@@ -201,7 +203,7 @@ func Dissect(dissect bool, data []byte) {
 		defer dissectLock.Unlock()
 
 		initParser()
-		err := parser.DecodeLayers(data, &cache.decoded)
+		err := decodeLayers(data, &cache.decoded)
 
 		for _, typ := range cache.decoded {
 			switch typ {
@@ -264,7 +266,7 @@ func GetDissectSummary(data []byte) *DissectSummary {
 	defer dissectLock.Unlock()
 
 	initParser()
-	parser.DecodeLayers(data, &cache.decoded)
+	decodeLayers(data, &cache.decoded)
 
 	ret := &DissectSummary{}
 
@@ -301,4 +303,43 @@ func GetDissectSummary(data []byte) *DissectSummary {
 		}
 	}
 	return ret
+}
+
+func decodeLayers(data []byte, decoded *[]gopacket.LayerType) error {
+	err := parser.DecodeLayers(data, decoded)
+
+	if decoded != nil && len(*decoded) == 1 && (*decoded)[0] == layers.LayerTypeEthernet {
+		// Only ethernet header has been parsed within the packet data.
+		//
+		// This actually can indicate ethernet header is missing and gopacket just cannot parse it properly.
+		// This happens when the packet has been received on L2-less device (typically tunnel iface).
+		//
+		// Lets try to fake an ethernet header to make possible to parse theese.
+
+		// IP header is expected on tunnel iface - first 4 bits says IP version
+		switch data[0] >> 4 {
+		case 0x04:
+			// fill IPv4 type into ethernet header
+			dummyEthernetHeader[12] = 0x08
+			dummyEthernetHeader[13] = 0x00
+		case 0x06:
+			// fill IPv6 type into ethernet header
+			dummyEthernetHeader[12] = 0x86
+			dummyEthernetHeader[13] = 0xDD
+		default:
+			return err
+		}
+
+		_data := make([]byte, len(dummyEthernetHeader)+len(data))
+		copy(_data, dummyEthernetHeader)
+		copy(_data[len(dummyEthernetHeader):], data)
+
+		err2 := parser.DecodeLayers(_data, decoded)
+		if len(*decoded) > 1 {
+			*decoded = (*decoded)[1:]
+			return err2
+		}
+	}
+
+	return err
 }

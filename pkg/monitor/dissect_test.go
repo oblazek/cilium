@@ -70,3 +70,36 @@ func (s *MonitorSuite) TestConnectionSummary(c *C) {
 		"tcp SYN")
 	c.Assert(summary, Equals, expect)
 }
+
+func (s *MonitorSuite) TestConnectionSummaryWithoutL2(c *C) {
+	testCases := []struct {
+		name       string
+		expect     string
+		packetData []byte
+	}{
+		{
+			name:   "IPv4 + TCP",
+			expect: "1.1.1.1:8080 -> 2.2.2.2:9090 tcp SYN",
+			// Generated in scapy:
+			// IP(src="1.1.1.1", dst="2.2.2.2")/TCP(sport=8080, dport=9090)
+			packetData: []byte{69, 0, 0, 40, 0, 1, 0, 0, 64, 6, 116, 202, 1, 1, 1, 1, 2, 2, 2, 2, 31, 144, 35, 130, 0, 0, 0, 0, 0, 0, 0, 0, 80, 2, 32, 0, 70, 203, 0, 0},
+		}, {
+			name:   "IPv6 + TCP",
+			expect: "[1:1:1:1::1]:8080 -> [2:2:2:2::2]:9090 tcp SYN",
+			// Generated in scapy:
+			// IPv6(src="1:1:1:1::1", dst="2:2:2:2::2")/TCP(sport=8080, dport=9090)
+			packetData: []byte{96, 0, 0, 0, 0, 20, 6, 64, 0, 1, 0, 1, 0, 1, 0, 1, 0, 0, 0, 0, 0, 0, 0, 1, 0, 2, 0, 2, 0, 2, 0, 2, 0, 0, 0, 0, 0, 0, 0, 2, 31, 144, 35, 130, 0, 0, 0, 0, 0, 0, 0, 0, 80, 2, 32, 0, 76, 194, 0, 0},
+		}, {
+			name:   "IPv4 + ICMP",
+			expect: "1.1.1.1 -> 2.2.2.2 EchoRequest",
+			// Generated in scapy:
+			// IP(src="1.1.1.1", dst="2.2.2.2")/ICMP()
+			packetData: []byte{69, 0, 0, 28, 0, 1, 0, 0, 64, 1, 116, 219, 1, 1, 1, 1, 2, 2, 2, 2, 8, 0, 247, 255, 0, 0, 0, 0},
+		},
+	}
+
+	for _, tc := range testCases {
+		summary := GetConnectionSummary(tc.packetData)
+		c.Assert(summary, Equals, tc.expect)
+	}
+}
