@@ -127,6 +127,9 @@ const (
 	// direct routing mode (only required by BPF NodePort)
 	DirectRoutingDevice = "direct-routing-device"
 
+	// Disable setting of net.ipv4.conf.all.rp_filter, preserve actual system value.
+	DisableRpFilterAllModify = "disable-rp-filter-all-modify"
+
 	// DisableEnvoyVersionCheck do not perform Envoy binary version check on startup
 	DisableEnvoyVersionCheck = "disable-envoy-version-check"
 
@@ -1439,6 +1442,8 @@ type DaemonConfig struct {
 	HostV6Addr          net.IP       // Host v6 address of the snooping device
 	EncryptInterface    []string     // Set of network facing interface to encrypt over
 	EncryptNode         bool         // Set to true for encrypting node IP traffic
+
+	DisableRpFilterAllModify bool // Disable setting of net.ipv4.conf.all.rp_filter, preserve actual system value.
 
 	// If set to true the daemon will detect new and deleted datapath devices
 	// at runtime and reconfigure the datapath to load programs onto the new
@@ -3056,6 +3061,7 @@ func (c *DaemonConfig) Populate(vp *viper.Viper) {
 	c.Debug = vp.GetBool(DebugArg)
 	c.DebugVerbose = vp.GetStringSlice(DebugVerbose)
 	c.DirectRoutingDevice = vp.GetString(DirectRoutingDevice)
+	c.DisableRpFilterAllModify = vp.GetBool(DisableRpFilterAllModify)
 	c.EnableIPv4 = vp.GetBool(EnableIPv4Name)
 	c.EnableIPv6 = vp.GetBool(EnableIPv6Name)
 	c.EnableIPv6NDP = vp.GetBool(EnableIPv6NDPName)

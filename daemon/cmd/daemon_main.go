@@ -225,6 +225,9 @@ func InitGlobalFlags(cmd *cobra.Command, vp *viper.Viper) {
 	flags.String(option.DirectRoutingDevice, "", "Device name used to connect nodes in direct routing mode (used by BPF NodePort, BPF host routing; if empty, automatically set to a device with k8s InternalIP/ExternalIP or with a default route)")
 	option.BindEnv(vp, option.DirectRoutingDevice)
 
+	flags.Bool(option.DisableRpFilterAllModify, false, "Disable setting of net.ipv4.conf.all.rp_filter, preserve actual system value.")
+	option.BindEnv(vp, option.DisableRpFilterAllModify)
+
 	flags.Bool(option.EnableRuntimeDeviceDetection, false, "Enable runtime device detection and datapath reconfiguration (experimental)")
 	option.BindEnv(vp, option.EnableRuntimeDeviceDetection)
 

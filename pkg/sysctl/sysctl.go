@@ -18,6 +18,7 @@ import (
 	"github.com/cilium/cilium/pkg/lock"
 	"github.com/cilium/cilium/pkg/logging"
 	"github.com/cilium/cilium/pkg/logging/logfields"
+	"github.com/cilium/cilium/pkg/option"
 )
 
 const (
@@ -158,6 +159,11 @@ func ReadInt(name string) (int64, error) {
 // ApplySettings applies all settings in sysSettings.
 func ApplySettings(sysSettings []Setting) error {
 	for _, s := range sysSettings {
+		if option.Config.DisableRpFilterAllModify && s.Name == "net.ipv4.conf.all.rp_filter" {
+			log.Infof("Skipping sysctl %s=%s within disable-rp-filter-all-modify...", s.Name, s.Val)
+			continue
+		}
+
 		log.WithFields(logrus.Fields{
 			logfields.SysParamName:  s.Name,
 			logfields.SysParamValue: s.Val,
