@@ -434,8 +434,10 @@ func (ipc *IPCache) resolveIdentity(ctx context.Context, prefix netip.Prefix, in
 	// when we remove CIDR labels for identities that should not have them.
 	if restoredIdentity.Scope() == identity.IdentityScopeRemoteNode {
 		lbls.MergeLabels(labels.LabelRemoteNode)
-		cidrLabels := cidrlabels.GetCIDRLabels(prefix)
-		lbls.MergeLabels(cidrLabels)
+		if option.Config.PolicyCIDRMatchesNodes() {
+			cidrLabels := cidrlabels.GetCIDRLabels(prefix)
+			lbls.MergeLabels(cidrLabels)
+		}
 	}
 
 	// If we are restoring a host identity and policy-cidr-match-mode includes "nodes"
@@ -458,6 +460,10 @@ func (ipc *IPCache) resolveIdentity(ctx context.Context, prefix netip.Prefix, in
 		// includes "nodes". Then CIDR labels are required.
 		if !option.Config.PolicyCIDRMatchesNodes() {
 			n = n.Remove(cidrlabels.GetCIDRLabels(prefix))
+		}
+		if !option.Config.PerNodeIdentitiesEnabled() {
+			nodeLabels := n.GetFromSource(labels.LabelSourceNode)
+			n = n.Remove(nodeLabels)
 		}
 		lbls = n
 	}

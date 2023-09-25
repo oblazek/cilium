@@ -541,6 +541,9 @@ const (
 
 	// EnableK8sNetworkPolicy enables support for K8s NetworkPolicy.
 	EnableK8sNetworkPolicy = true
+
+	// EnablePerNodeIdentity is the default value for option.EnablePerNodeIdentity
+	EnablePerNodeIdentity = false
 )
 
 var (

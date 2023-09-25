@@ -268,6 +268,9 @@ func LookupReservedIdentityByLabels(lbls labels.Labels) *Identity {
 		if option.Config.PolicyCIDRMatchesNodes() {
 			return nil
 		}
+		if option.Config.PerNodeIdentitiesEnabled() {
+			return nil
+		}
 		nid = ReservedIdentityRemoteNode
 		if lbls.Has(labels.LabelKubeAPIServer[labels.IDNameKubeAPIServer]) {
 			// If there's a kube-apiserver label, then we know this is
