@@ -1,0 +1,33 @@
+image: docker.ops.iszn.cz/sklik-devops/ci-scripts:1
+
+stages:
+  - check
+  - build
+
+include:
+  - project: ultra/SCIF/labrador/gitlab-ci
+    file: /definitions/build.yml
+    ref: v2.1
+
+# check
+# ---------------------------------------------------------------------
+check-helm-values:
+  stage: check
+  variables:
+    # check will pass if you build values.yaml beforehand with
+    # `CILIUM_VERSION=<tag name> make -C install/kubernetes cilium/values.yaml`
+    # use -B / --always-make to force target run even if deps are up to date
+    CILIUM_VERSION: "$CI_COMMIT_TAG"
+  script:
+    - make -C install/kubernetes check-values-yaml
+  only:
+    - tags
+
+# build
+# ---------------------------------------------------------------------
+build-helm:
+  extends: .[lgci]-build-helm
+  variables:
+    HELM_CHART_PATH: install/kubernetes/cilium
+  only:
+    - tags
