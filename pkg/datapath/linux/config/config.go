@@ -683,6 +683,10 @@ func (h *HeaderfileWriter) WriteNodeConfig(w io.Writer, cfg *datapath.LocalNodeC
 		cDefinesMap["SZN_ALWAYS_PASS"] = "1"
 	}
 
+	if option.Config.IPAM == "calico" {
+		cDefinesMap["DO_SKIP_ICMPV6"] = "1"
+	}
+
 	vlanFilter, err := vlanFilterMacros()
 	if err != nil {
 		return err

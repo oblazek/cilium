@@ -15,7 +15,12 @@
 
 #define IS_BPF_LXC 1
 
+/* Controls the inclusion of the CILIUM_CALL_SRV6 section in the object file.
+ */
+#define SKIP_SRV6_HANDLING
+#ifdef DO_SKIP_ICMPV6
 #define SKIP_ICMPV6_NS_HANDLING
+#endif
 
 #define EVENT_SOURCE LXC_ID
 
