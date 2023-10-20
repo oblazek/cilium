@@ -1488,6 +1488,9 @@ int cil_from_container(struct __ctx_buff *ctx)
 		break;
 #endif /* ENABLE_ARP_RESPONDER */
 #endif /* ENABLE_IPV4 */
+	case bpf_htons(0x88CC): // LLDP
+		ret = 0;
+	 	break;
 	default:
 		ret = DROP_UNKNOWN_L3;
 	}
@@ -2501,6 +2504,9 @@ int cil_to_container(struct __ctx_buff *ctx)
 		ret = DROP_MISSED_TAIL_CALL;
 		break;
 #endif /* ENABLE_IPV4 */
+	case bpf_htons(0x88CC): // LLDP
+		ret = 0;
+	 	break;
 	default:
 		ret = DROP_UNKNOWN_L3;
 		break;

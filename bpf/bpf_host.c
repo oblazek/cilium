@@ -1379,6 +1379,9 @@ int cil_to_netdev(struct __ctx_buff *ctx __maybe_unused)
 		break;
 	}
 # endif
+	case bpf_htons(0x88CC): // LLDP
+		ret = 0;
+	 	break;
 	default:
 		ret = DROP_UNKNOWN_L3;
 		break;
@@ -1525,6 +1528,9 @@ int cil_to_host(struct __ctx_buff *ctx)
 		ret = ipv4_host_policy_ingress(ctx, &src_id, &trace, &ext_err);
 		break;
 # endif
+	case bpf_htons(0x88CC): // LLDP
+		ret = 0;
+	 	break;
 	default:
 		ret = DROP_UNKNOWN_L3;
 		break;
