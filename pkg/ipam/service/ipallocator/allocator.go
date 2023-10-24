@@ -68,11 +68,11 @@ type Range struct {
 // the backing store.
 func NewCIDRRange(cidr *net.IPNet) *Range {
 	base := bigForIP(cidr.IP)
-	max := maximum(0, int(RangeSize(cidr)-2)) // don't use the network broadcast,
+	max := maximum(0, int(RangeSize(cidr))) // don't use the network broadcast,
 
 	return &Range{
 		net:   cidr,
-		base:  base.Add(base, big.NewInt(1)), // don't use the network base
+		base:  base.Add(base, big.NewInt(0)), // don't use the network base
 		max:   max,
 		alloc: allocator.NewAllocationMap(int(max), cidr.String()),
 	}
@@ -229,6 +229,7 @@ func RangeSize(subnet *net.IPNet) int64 {
 	if bits == 32 && (bits-ones) >= 31 || bits == 128 && (bits-ones) >= 127 {
 		return 0
 	}
+
 	// For IPv6, the max size will be limited to 65536
 	// This is due to the allocator keeping track of all the
 	// allocated IP's in a bitmap. This will keep the size of
