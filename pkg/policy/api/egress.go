@@ -100,6 +100,12 @@ type EgressCommonRule struct {
 	// +kubebuilder:validation:Optional
 	ToGroups []ToGroups `json:"toGroups,omitempty"`
 
+	// ToNodes is a list of nodes identified by an
+	// EndpointSelector to which endpoints subject to the rule is allowed to communicate.
+	//
+	// +kubebuilder:validation:Optional
+	ToNodes []EndpointSelector `json:"toNodes,omitempty"`
+
 	// TODO: Move this to the policy package
 	// (https://github.com/cilium/cilium/issues/8353)
 	aggregatedSelectors EndpointSelectorSlice `json:"-"`
@@ -282,7 +288,7 @@ func (e *EgressCommonRule) getDestinationEndpointSelectorsWithRequirements(
 	requirements []slim_metav1.LabelSelectorRequirement,
 ) EndpointSelectorSlice {
 
-	res := make(EndpointSelectorSlice, 0, len(e.ToEndpoints)+len(e.aggregatedSelectors))
+	res := make(EndpointSelectorSlice, 0, len(e.ToEndpoints)+len(e.aggregatedSelectors)+len(e.ToNodes))
 
 	if len(requirements) > 0 && len(e.ToEndpoints) > 0 {
 		for idx := range e.ToEndpoints {
@@ -296,6 +302,7 @@ func (e *EgressCommonRule) getDestinationEndpointSelectorsWithRequirements(
 		}
 	} else {
 		res = append(res, e.ToEndpoints...)
+		res = append(res, e.ToNodes...)
 	}
 	return append(res, e.aggregatedSelectors...)
 }

@@ -72,6 +72,13 @@ type IngressCommonRule struct {
 	// +kubebuilder:validation:Optional
 	FromEntities EntitySlice `json:"fromEntities,omitempty"`
 
+	// FromNodes is a list of nodes identified by an
+	// EndpointSelector which are allowed to communicate with the endpoint
+	// subject to the rule.
+	//
+	// +kubebuilder:validation:Optional
+	FromNodes []EndpointSelector `json:"fromNodes,omitempty"`
+
 	// TODO: Move this to the policy package
 	// (https://github.com/cilium/cilium/issues/8353)
 	aggregatedSelectors EndpointSelectorSlice `json:"-"`
@@ -190,7 +197,7 @@ func (i *IngressCommonRule) GetSourceEndpointSelectorsWithRequirements(requireme
 	if i.aggregatedSelectors == nil {
 		i.SetAggregatedSelectors()
 	}
-	res := make(EndpointSelectorSlice, 0, len(i.FromEndpoints)+len(i.aggregatedSelectors))
+	res := make(EndpointSelectorSlice, 0, len(i.FromEndpoints)+len(i.aggregatedSelectors)+len(i.FromNodes))
 	if len(requirements) > 0 && len(i.FromEndpoints) > 0 {
 		for idx := range i.FromEndpoints {
 			sel := *i.FromEndpoints[idx].DeepCopy()
@@ -203,6 +210,7 @@ func (i *IngressCommonRule) GetSourceEndpointSelectorsWithRequirements(requireme
 		}
 	} else {
 		res = append(res, i.FromEndpoints...)
+		res = append(res, i.FromNodes...)
 	}
 
 	return append(res, i.aggregatedSelectors...)
