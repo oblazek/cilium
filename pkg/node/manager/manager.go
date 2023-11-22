@@ -425,8 +425,13 @@ func (m *manager) endpointEncryptionKey(n *nodeTypes.Node) ipcacheTypes.EncryptK
 	return ipcacheTypes.EncryptKey(n.EncryptionKey)
 }
 
+// Openstack uses dummy CiliumInternalIPs for all ciliumnodes
+// if injecting these IPs is not skipped, host identity might get both
+// reserved:host and reserved:remote-node because CiliumInternalIPs are shared
+// between all nodes
 func (m *manager) nodeAddressSkipsIPCache(address nodeTypes.Address) bool {
-	return m.legacyNodeIpBehavior() && address.Type != addressing.NodeCiliumInternalIP
+	return m.legacyNodeIpBehavior() && address.Type != addressing.NodeCiliumInternalIP ||
+		option.Config.IPAM == "calico" && address.Type == addressing.NodeCiliumInternalIP
 }
 
 func (m *manager) nodeIdentityLabels(n nodeTypes.Node) (nodeLabels labels.Labels, hasOverride bool) {
