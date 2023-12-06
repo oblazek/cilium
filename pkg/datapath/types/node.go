@@ -135,6 +135,10 @@ type NodeNeighbors interface {
 	// NodeCleanNeighbors cleans all neighbor entries for the direct routing device
 	// and the encrypt interface.
 	NodeCleanNeighbors(migrateOnly bool)
+
+	InsertMiscNeighbor(newNode *nodeTypes.Node)
+
+	DeleteMiscNeighbor(oldNode *nodeTypes.Node)
 }
 
 type NodeIDHandler interface {
