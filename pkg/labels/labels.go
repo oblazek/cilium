@@ -109,6 +109,18 @@ const (
 	// LabelSourceK8s is a label imported from Kubernetes
 	LabelSourceK8s = "k8s"
 
+	// LabelSourceOpenstackis a label imported from Openstack
+	LabelSourceOpenstack = "openstack"
+
+	// LabelSourceOpenstackKeyPrefix is a label imported from Openstack
+	LabelSourceOpenstackKeyPrefix = "openstack" + "."
+
+	// LabelSourceCalicoKeyPrefix is a label imported from Calico based clusters
+	LabelSourceCalicoKeyPrefix = "calico" + "."
+
+	// LabelSourceMesos is a label imported from Mesos
+	LabelSourceMesos = "mesos"
+
 	// LabelSourceK8sKeyPrefix is prefix of a Kubernetes label
 	LabelSourceK8sKeyPrefix = LabelSourceK8s + "."
 

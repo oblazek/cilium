@@ -461,6 +461,11 @@ func (e *Endpoint) GetIfIndex() int {
 	return e.ifIndex
 }
 
+// GetIfName returns the ifName of this endpoint.
+func (e *Endpoint) GetIfName() string {
+	return e.ifName
+}
+
 // LXCMac returns the LXCMac for this endpoint.
 func (e *Endpoint) LXCMac() mac.MAC {
 	return e.mac

@@ -109,7 +109,7 @@ func NewIPAM(nodeAddressing types.NodeAddressing, c Configuration, owner Owner, 
 	}
 
 	switch c.IPAMMode() {
-	case ipamOption.IPAMKubernetes, ipamOption.IPAMClusterPool:
+	case ipamOption.IPAMKubernetes, ipamOption.IPAMClusterPool, ipamOption.IPAMCalico:
 		log.WithFields(logrus.Fields{
 			logfields.V4Prefix: nodeAddressing.IPv4().AllocationCIDR(),
 			logfields.V6Prefix: nodeAddressing.IPv6().AllocationCIDR(),

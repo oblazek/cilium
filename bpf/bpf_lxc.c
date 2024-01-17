@@ -15,6 +15,8 @@
 
 #define IS_BPF_LXC 1
 
+#define SKIP_ICMPV6_NS_HANDLING
+
 #define EVENT_SOURCE LXC_ID
 
 #include "lib/auth.h"

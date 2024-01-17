@@ -10,6 +10,7 @@ import (
 	"net"
 	"os"
 	"sync"
+	"time"
 
 	"github.com/sirupsen/logrus"
 	"github.com/vishvananda/netlink"
@@ -29,6 +30,10 @@ import (
 	"github.com/cilium/cilium/pkg/maps/lxcmap"
 	nodeTypes "github.com/cilium/cilium/pkg/node/types"
 	"github.com/cilium/cilium/pkg/option"
+)
+
+const (
+	initialRetryDelay = 500 * time.Millisecond
 )
 
 var syncLBMapsControllerGroup = controller.NewGroup("sync-lb-maps-with-k8s-services")
@@ -95,8 +100,19 @@ func (d *Daemon) validateEndpoint(ep *endpoint.Endpoint) (valid bool, err error)
 		ep.RunRestoredMetadataResolver(d.bwManager, d.fetchK8sMetadataForEndpoint)
 	}
 
-	if err := ep.ValidateConnectorPlumbing(checkLink); err != nil {
-		return false, err
+	retryDelay := initialRetryDelay
+	for i := 0; i < option.Config.RestoreValidationRetries; i++ {
+		if err := ep.ValidateConnectorPlumbing(checkLink); err != nil {
+			// If host get's rebooted it doesn't make sense to wait for cilium_host to show up since that
+			// gets created in a later phase
+			if i < (option.Config.RestoreValidationRetries-1) && ep.GetIfName() != "cilium_host" {
+				time.Sleep(retryDelay)
+				retryDelay *= 2
+				continue
+			}
+			return false, err
+		}
+		break
 	}
 
 	if !ep.DatapathConfiguration.ExternalIpam {

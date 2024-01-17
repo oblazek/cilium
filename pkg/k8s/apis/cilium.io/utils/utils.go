@@ -12,6 +12,7 @@ import (
 	"github.com/cilium/cilium/pkg/labels"
 	"github.com/cilium/cilium/pkg/logging"
 	"github.com/cilium/cilium/pkg/logging/logfields"
+	"github.com/cilium/cilium/pkg/option"
 	"github.com/cilium/cilium/pkg/policy/api"
 )
 
@@ -25,6 +26,14 @@ const (
 	// podAnyPrefixLbl is the value of the prefix used in the label selector to
 	// represent pods in the default namespace for any source type.
 	podAnyPrefixLbl = labels.LabelSourceAnyKeyPrefix + k8sConst.PodNamespaceLabel
+
+	// podOpenstackPrefixLbl is the value of the prefix used in the label selector
+	// to represent vm(s) in the openstack clusters
+	podOpenstackPrefixLbl = labels.LabelSourceOpenstackKeyPrefix + k8sConst.PodNamespaceLabel
+
+	// podCalicoPrefixLbl is the value of the prefix used in the label selector
+	// to represent pods/vm(s) in the calico based clusters
+	podCalicoPrefixLbl = labels.LabelSourceCalicoKeyPrefix + k8sConst.PodNamespaceLabel
 
 	// podInitLbl is the label used in a label selector to match on
 	// initializing pods.
@@ -82,18 +91,22 @@ func getEndpointSelector(namespace string, labelSelector *slim_metav1.LabelSelec
 	// Those pods don't have any labels, so they don't have a namespace label either.
 	// Don't add a namespace label to those endpoint selectors, or we wouldn't be
 	// able to match on those pods.
-	if !es.HasKey(podPrefixLbl) && !es.HasKey(podAnyPrefixLbl) {
+	if !es.HasKey(podPrefixLbl) && !es.HasKey(podAnyPrefixLbl) && !es.HasKey(podOpenstackPrefixLbl) && !es.HasKey(podCalicoPrefixLbl) {
 		if namespace == "" {
 			// For a clusterwide policy if a namespace is not specified in the labels we add
 			// a selector to only match endpoints that contains a namespace label.
-			// This is to make sure that we are only allowing traffic for cilium managed k8s endpoints
+			// This is to make sure that we are only allowing traffic for cilium managed endpoints
 			// and even if a wildcard is provided in the selector we don't proceed with a truly
 			// empty(allow all) endpoint selector for the policy.
 			if !matchesInit {
-				es.AddMatchExpression(podPrefixLbl, slim_metav1.LabelSelectorOpExists, []string{})
+				es.AddMatchExpression(podAnyPrefixLbl, slim_metav1.LabelSelectorOpExists, []string{})
 			}
 		} else {
-			es.AddMatch(podPrefixLbl, namespace)
+			if option.Config.IPAM == "calico" {
+				es.AddMatch(podOpenstackPrefixLbl, namespace)
+			} else {
+				es.AddMatch(podPrefixLbl, namespace)
+			}
 		}
 	}
 
@@ -301,14 +314,22 @@ func ParseToCiliumRule(namespace, name string, uid types.UID, r *api.Rule) *api.
 		retRule.EndpointSelector = api.NewESFromK8sLabelSelector("", r.EndpointSelector.LabelSelector)
 		// The PodSelector should only reflect to the same namespace
 		// the policy is being stored, thus we add the namespace to
-		// the MatchLabels map.
+		// the MatchLabels map. The only exceptions are rules which
+		// select endpoints from other environment namespaces, these
+		// are prefixed with SourceOpenstackKeyPrefix (e.g. openstack).
 		//
-		// Policies applying to all namespaces are a special case.
-		// Such policies can match on any traffic from Pods or Nodes,
-		// so it wouldn't make sense to inject a namespace match for
-		// those policies.
-		if namespace != "" {
-			userNamespace, present := r.EndpointSelector.GetMatch(podPrefixLbl)
+		// Policies applying on initializing pods are a special case.
+		// Those pods don't have any labels, so they don't have a namespace label either.
+		// Don't add a namespace label to those endpoint selectors, or we wouldn't be
+		// able to match on those pods.
+		if !retRule.EndpointSelector.HasKey(podInitLbl) && namespace != "" {
+			var prefix string
+			if option.Config.IPAM == "calico" {
+				prefix = podOpenstackPrefixLbl
+			} else {
+				prefix = podPrefixLbl
+			}
+			userNamespace, present := r.EndpointSelector.GetMatch(prefix)
 			if present && !namespacesAreValid(namespace, userNamespace) {
 				log.WithFields(logrus.Fields{
 					logfields.K8sNamespace:              namespace,
@@ -317,7 +338,7 @@ func ParseToCiliumRule(namespace, name string, uid types.UID, r *api.Rule) *api.
 				}).Warn("CiliumNetworkPolicy contains illegal namespace match in EndpointSelector." +
 					" EndpointSelector always applies in namespace of the policy resource, removing illegal namespace match'.")
 			}
-			retRule.EndpointSelector.AddMatch(podPrefixLbl, namespace)
+			retRule.EndpointSelector.AddMatch(prefix, namespace)
 		}
 	} else if r.NodeSelector.LabelSelector != nil {
 		retRule.NodeSelector = api.NewESFromK8sLabelSelector("", r.NodeSelector.LabelSelector)

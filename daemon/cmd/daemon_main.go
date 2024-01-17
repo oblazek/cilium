@@ -740,6 +740,9 @@ func InitGlobalFlags(cmd *cobra.Command, vp *viper.Viper) {
 	flags.Bool(option.Restore, true, "Restores state, if possible, from previous daemon")
 	option.BindEnv(vp, option.Restore)
 
+	flags.Int(option.RestoreRetries, 1, "Number of retries to validate connector plumbing of an endpoint")
+	option.BindEnv(vp, option.RestoreRetries)
+
 	flags.String(option.SidecarIstioProxyImage, k8s.DefaultSidecarIstioProxyImageRegexp,
 		"Regular expression matching compatible Istio sidecar istio-proxy container image names")
 	option.BindEnv(vp, option.SidecarIstioProxyImage)
@@ -1128,6 +1131,9 @@ func InitGlobalFlags(cmd *cobra.Command, vp *viper.Viper) {
 	flags.Duration(option.MaxInternalTimerDelay, defaults.MaxInternalTimerDelay, "Maximum internal timer value across the entire agent. Use in test environments to detect race conditions in agent logic.")
 	flags.MarkHidden(option.MaxInternalTimerDelay)
 	option.BindEnv(vp, option.MaxInternalTimerDelay)
+
+	flags.Bool(option.SZNAlwaysPass, false, "Always return CTX_ACT_OK within send_drop_notify() function")
+	option.BindEnv(vp, option.SZNAlwaysPass)
 
 	if err := vp.BindPFlags(flags); err != nil {
 		log.Fatalf("BindPFlags failed: %s", err)

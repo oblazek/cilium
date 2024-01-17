@@ -33,6 +33,9 @@ const (
 	// In this mode, Cilium CNI invokes another CNI binary (the delegated plugin) for IPAM.
 	// See https://www.cni.dev/docs/spec/#section-4-plugin-delegation
 	IPAMDelegatedPlugin = "delegated-plugin"
+
+	// IPAMCalico is the value to select the Calico IPAM for e.g. openstack
+	IPAMCalico = "calico"
 )
 
 const (

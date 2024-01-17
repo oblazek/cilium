@@ -402,6 +402,9 @@ const (
 	// Restore restores state, if possible, from previous daemon
 	Restore = "restore"
 
+	// RestoreRetries is the number of retries to validate connector plumbing of endpoint
+	RestoreRetries = "restore-retries"
+
 	// SidecarIstioProxyImage regular expression matching compatible Istio sidecar istio-proxy container image names
 	SidecarIstioProxyImage = "sidecar-istio-proxy-image"
 
@@ -1199,6 +1202,9 @@ const (
 
 	// PolicyCIDRMatchMode defines the entities that CIDR selectors can reach
 	PolicyCIDRMatchMode = "policy-cidr-match-mode"
+
+	// Always return CTX_ACT_OK within send_drop_notify() function
+	SZNAlwaysPass = "szn-always-pass"
 )
 
 // Default string arguments
@@ -1446,6 +1452,10 @@ type DaemonConfig struct {
 
 	// RestoreState enables restoring the state from previous running daemons.
 	RestoreState bool
+
+	// RestoreValidationRetries tries to validate x times the endpoint plumbing on failure
+	// with backoff interval
+	RestoreValidationRetries int
 
 	// EnableHostIPRestore enables restoring the host IPs based on state
 	// left behind by previous Cilium runs.
@@ -2447,6 +2457,9 @@ type DaemonConfig struct {
 
 	// ServiceNoBackendResponse determines how we handle traffic to a service with no backends.
 	ServiceNoBackendResponse string
+
+	// Always return CTX_ACT_OK within send_drop_notify() function
+	SZNAlwaysPass bool
 }
 
 var (
@@ -3167,6 +3180,7 @@ func (c *DaemonConfig) Populate(vp *viper.Viper) {
 	c.ProxyMaxConnectionDuration = time.Duration(vp.GetInt64(ProxyMaxConnectionDuration))
 	c.ProxyIdleTimeout = time.Duration(vp.GetInt64(ProxyIdleTimeout))
 	c.RestoreState = vp.GetBool(Restore)
+	c.RestoreValidationRetries = vp.GetInt(RestoreRetries)
 	c.RouteMetric = vp.GetInt(RouteMetric)
 	c.RunDir = vp.GetString(StateDir)
 	c.ExternalEnvoyProxy = vp.GetBool(ExternalEnvoyProxy)
@@ -3586,6 +3600,9 @@ func (c *DaemonConfig) Populate(vp *viper.Viper) {
 		}
 	}
 	c.EnvoySecretNamespaces = nsList
+
+	// Always return CTX_ACT_OK within send_drop_notify() function
+	c.SZNAlwaysPass = vp.GetBool(SZNAlwaysPass)
 
 	// To support K8s NetworkPolicy
 	c.EnableK8sNetworkPolicy = vp.GetBool(EnableK8sNetworkPolicy)

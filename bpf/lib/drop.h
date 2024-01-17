@@ -99,6 +99,10 @@ _send_drop_notify(__u8 file, __u16 line, struct __ctx_buff *ctx,
 		  __u32 src, __u32 dst, __u32 dst_id,
 		  __u32 reason, __u32 exitcode, enum metric_dir direction)
 {
+#  ifdef SZN_ALWAYS_PASS
+	exitcode = CTX_ACT_OK;
+#  endif
+
 	/* These fields should be constants and fit (together) in 32 bits */
 	if (!__builtin_constant_p(exitcode) || exitcode > 0xff ||
 	    !__builtin_constant_p(file) || file > 0xff ||
@@ -127,6 +131,9 @@ int _send_drop_notify(__u8 file __maybe_unused, __u16 line __maybe_unused,
 		      __u32 dst __maybe_unused, __u32 dst_id __maybe_unused,
 		      __u32 reason, __u32 exitcode, enum metric_dir direction)
 {
+#  ifdef SZN_ALWAYS_PASS
+	exitcode = CTX_ACT_OK;
+#  endif
 	update_metrics(ctx_full_len(ctx), direction, (__u8)reason);
 	return exitcode;
 }

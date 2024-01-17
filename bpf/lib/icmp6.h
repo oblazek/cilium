@@ -37,7 +37,7 @@
  * messages.
  */
 #ifndef ACTION_UNKNOWN_ICMP6_NS
-#define ACTION_UNKNOWN_ICMP6_NS DROP_UNKNOWN_TARGET
+#define ACTION_UNKNOWN_ICMP6_NS CTX_ACT_OK
 #endif
 
 static __always_inline int icmp6_load_type(struct __ctx_buff *ctx, int l4_off, __u8 *type)
@@ -337,7 +337,7 @@ static __always_inline int __icmp6_handle_ns(struct __ctx_buff *ctx, int nh_off)
 		return send_icmp6_ndisc_adv(ctx, nh_off, &router_mac, false);
 	}
 
-	/* Unknown target address, drop */
+	/* Unknown target address, could be fe80 like, pass to stack */
 	return ACTION_UNKNOWN_ICMP6_NS;
 }
 
@@ -372,9 +372,12 @@ static __always_inline int icmp6_handle_ns(struct __ctx_buff *ctx, int nh_off,
 	ctx_store_meta(ctx, 0, nh_off);
 	ctx_store_meta(ctx, 1, direction);
 
+#ifndef SKIP_ICMPV6_NS_HANDLING
 	ep_tail_call(ctx, CILIUM_CALL_HANDLE_ICMP6_NS);
-
 	return DROP_MISSED_TAIL_CALL;
+#else
+	return 0;
+#endif
 }
 
 static __always_inline bool

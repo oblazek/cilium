@@ -679,6 +679,10 @@ func (h *HeaderfileWriter) WriteNodeConfig(w io.Writer, cfg *datapath.LocalNodeC
 
 	}
 
+	if option.Config.SZNAlwaysPass {
+		cDefinesMap["SZN_ALWAYS_PASS"] = "1"
+	}
+
 	vlanFilter, err := vlanFilterMacros()
 	if err != nil {
 		return err
