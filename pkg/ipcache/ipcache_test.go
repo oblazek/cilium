@@ -19,7 +19,9 @@ import (
 	"github.com/cilium/cilium/pkg/checker"
 	cmtypes "github.com/cilium/cilium/pkg/clustermesh/types"
 	identityPkg "github.com/cilium/cilium/pkg/identity"
+	ipamOption "github.com/cilium/cilium/pkg/ipam/option"
 	"github.com/cilium/cilium/pkg/labels"
+	"github.com/cilium/cilium/pkg/option"
 	"github.com/cilium/cilium/pkg/source"
 	testidentity "github.com/cilium/cilium/pkg/testutils/identity"
 	"github.com/cilium/cilium/pkg/types"
@@ -659,4 +661,108 @@ func (s *IPCacheTestSuite) TestIPCacheShadowing(c *C) {
 	ipc.Delete(endpointIP, source.KVStore)
 	_, exists := ipc.LookupByPrefix(cidrOverlap)
 	c.Assert(exists, Equals, false)
+}
+
+func (s *IPCacheTestSuite) TestIPCacheSznShadowing(c *C) {
+	endpointIP := "10.0.0.15"
+	nodeIPOverlap := "10.0.0.15/32"
+	epIdentity := (identityPkg.NumericIdentity(68))
+	nodeIPIdentity := identityPkg.NumericIdentity(identityPkg.IdentityScopeRemoteNode | 1)
+	ipc := IPIdentityCache
+	option.Config.IPAM = ipamOption.IPAMMultiPool
+
+	// Assure sane state at start.
+	c.Assert(ipc.ipToIdentityCache, checker.DeepEquals, map[string]Identity{})
+	c.Assert(ipc.identityToIPCache, checker.DeepEquals, map[identityPkg.NumericIdentity]map[string]struct{}{})
+
+	ipcache := newDummyListener(ipc)
+
+	// upsert cidr
+	ipc.Upsert(nodeIPOverlap, nil, 0, nil, Identity{
+		ID:     nodeIPIdentity,
+		Source: source.KVStore,
+	})
+	ipcache.ExpectMapping(c, nodeIPOverlap, nodeIPIdentity)
+
+	// upsert endpoint
+	ipc.Upsert(endpointIP, nil, 0, nil, Identity{
+		ID:     epIdentity,
+		Source: source.KVStore,
+	})
+	ipcache.ExpectMapping(c, nodeIPOverlap, nodeIPIdentity)
+
+	// delete endpoint
+	ipc.Delete(endpointIP, source.KVStore)
+	ipcache.ExpectMapping(c, nodeIPOverlap, nodeIPIdentity)
+
+	// delete node
+	ipc.Delete(nodeIPOverlap, source.KVStore)
+	_, exists := ipc.LookupByPrefix(nodeIPOverlap)
+	c.Assert(exists, Equals, false)
+
+	// reinsert endpoint
+	ipc.Upsert(endpointIP, nil, 0, nil, Identity{
+		ID:     epIdentity,
+		Source: source.KVStore,
+	})
+	ipcache.ExpectMapping(c, nodeIPOverlap, epIdentity)
+
+	// reinsert node
+	ipc.Upsert(nodeIPOverlap, nil, 0, nil, Identity{
+		ID:     nodeIPIdentity,
+		Source: source.KVStore,
+	})
+	ipcache.ExpectMapping(c, nodeIPOverlap, nodeIPIdentity)
+}
+
+func (s *IPCacheTestSuite) TestIPCacheSznOpenstackShadowing(c *C) {
+	endpointIP := "10.0.0.15"
+	nodeIPOverlap := "10.0.0.15/32"
+	epIdentity := (identityPkg.NumericIdentity(68))
+	nodeIdentity := identityPkg.NumericIdentity(identityPkg.IdentityScopeRemoteNode | 1)
+	option.Config.IPAM = ipamOption.IPAMCalico
+	ipc := IPIdentityCache
+
+	// Assure sane state at start.
+	c.Assert(ipc.ipToIdentityCache, checker.DeepEquals, map[string]Identity{})
+	c.Assert(ipc.identityToIPCache, checker.DeepEquals, map[identityPkg.NumericIdentity]map[string]struct{}{})
+
+	ipcache := newDummyListener(ipc)
+
+	// upsert node
+	ipc.Upsert(nodeIPOverlap, nil, 0, nil, Identity{
+		ID:     nodeIdentity,
+		Source: source.KVStore,
+	})
+	ipcache.ExpectMapping(c, nodeIPOverlap, nodeIdentity)
+
+	// upsert endpoint
+	ipc.Upsert(endpointIP, nil, 0, nil, Identity{
+		ID:     epIdentity,
+		Source: source.KVStore,
+	})
+	ipcache.ExpectMapping(c, nodeIPOverlap, epIdentity)
+
+	// delete endpoint
+	ipc.Delete(endpointIP, source.KVStore)
+	ipcache.ExpectMapping(c, nodeIPOverlap, nodeIdentity)
+
+	// delete node
+	ipc.Delete(nodeIPOverlap, source.KVStore)
+	_, exists := ipc.LookupByPrefix(nodeIPOverlap)
+	c.Assert(exists, Equals, false)
+
+	// reinsert endpoint
+	ipc.Upsert(endpointIP, nil, 0, nil, Identity{
+		ID:     epIdentity,
+		Source: source.KVStore,
+	})
+	ipcache.ExpectMapping(c, nodeIPOverlap, epIdentity)
+
+	// reinsert node
+	ipc.Upsert(nodeIPOverlap, nil, 0, nil, Identity{
+		ID:     nodeIdentity,
+		Source: source.KVStore,
+	})
+	ipcache.ExpectMapping(c, nodeIPOverlap, epIdentity)
 }

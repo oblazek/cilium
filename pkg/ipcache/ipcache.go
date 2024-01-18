@@ -17,6 +17,7 @@ import (
 	"github.com/cilium/cilium/pkg/counter"
 	"github.com/cilium/cilium/pkg/identity"
 	"github.com/cilium/cilium/pkg/identity/cache"
+	ipamOption "github.com/cilium/cilium/pkg/ipam/option"
 	ipcacheTypes "github.com/cilium/cilium/pkg/ipcache/types"
 	"github.com/cilium/cilium/pkg/k8s"
 	"github.com/cilium/cilium/pkg/labels"
@@ -357,13 +358,18 @@ func (ipc *IPCache) upsertLocked(
 	// Endpoint IP identities take precedence over CIDR identities, so if the
 	// IP is a full CIDR prefix and there's an existing equivalent endpoint IP,
 	// don't notify the listeners.
-	if cidrCluster, err = cmtypes.ParsePrefixCluster(ip); err == nil {
+	if cidrCluster, err = cmtypes.ParsePrefixCluster(ip); err == nil { // CIDR or Node with /32
 		if cidrCluster.IsSingleIP() {
-			if _, endpointIPFound := ipc.ipToIdentityCache[cidrCluster.AddrCluster().String()]; endpointIPFound {
-				scopedLog.Debug("Ignoring CIDR to identity mapping as it is shadowed by an endpoint IP")
-				// Skip calling back the listeners, since the endpoint IP has
-				// precedence over the new CIDR.
-				newIdentity.shadowed = true
+			if epIdentity, endpointIPFound := ipc.ipToIdentityCache[cidrCluster.AddrCluster().String()]; endpointIPFound {
+				if (newIdentity.ID.IsReservedIdentity() || newIdentity.ID.Scope().HasRemoteNodeScope()) && option.Config.IPAM != ipamOption.IPAMCalico {
+					epIdentity.ID = newIdentity.ID
+					epIdentity.shadowed = true
+					ipc.ipToIdentityCache[cidrCluster.AddrCluster().String()] = epIdentity
+					scopedLog.Infof("Replacing oldIdentity: %v with new one: %v", epIdentity, newIdentity)
+				} else {
+					scopedLog.Infof("Ignoring new identity as it is shadowed by an existing endpoint with ID: %v", epIdentity)
+					newIdentity.shadowed = true
+				}
 			}
 		}
 	} else if addrCluster, err := cmtypes.ParseAddrCluster(ip); err == nil { // Endpoint IP or Endpoint IP with ClusterID
@@ -376,10 +382,17 @@ func (ipc *IPCache) upsertLocked(
 			if cidrIdentity, cidrFound := ipc.ipToIdentityCache[cidrClusterStr]; cidrFound {
 				oldHostIP, _ = ipc.getHostIPCache(cidrClusterStr)
 				if cidrIdentity.ID != newIdentity.ID || !oldHostIP.Equal(hostIP) {
-					scopedLog.Debug("New endpoint IP started shadowing existing CIDR to identity mapping")
-					cidrIdentity.shadowed = true
-					ipc.ipToIdentityCache[cidrClusterStr] = cidrIdentity
-					oldIdentity = &cidrIdentity
+					scopedLog.Info("hmm endpoint, cidrFound")
+					if (cidrIdentity.ID.IsReservedIdentity() || cidrIdentity.ID.HasRemoteNodeScope()) && option.Config.IPAM != ipamOption.IPAMCalico {
+						newIdentity.ID = cidrIdentity.ID
+						newIdentity.shadowed = true
+						scopedLog.Infof("New endpoint IP: %v with ID: %v is being shadowed by existing identity: %v", ip, newIdentity.ID, cidrIdentity.ID)
+					} else {
+						scopedLog.Info("New endpoint IP started shadowing existing CIDR or remote-node.")
+						cidrIdentity.shadowed = true
+						ipc.ipToIdentityCache[cidrClusterStr] = cidrIdentity
+						oldIdentity = &cidrIdentity
+					}
 				} else {
 					// The endpoint IP and the CIDR are associated with the
 					// same identity and host IP. Nothing changes for the

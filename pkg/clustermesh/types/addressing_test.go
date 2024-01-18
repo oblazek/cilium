@@ -198,6 +198,8 @@ func TestParsePrefixCluster(t *testing.T) {
 		wantErr bool
 	}{
 		{"valid bare IPv4 prefix", "10.0.0.0/24", false},
+		{"valid bare 32 IPv4 prefix", "10.0.0.1/32", false},
+		{"valid bare endpoint IPv4 prefix", "10.0.0.1", true},
 		{"invalid bare IPv4 prefix 1", "10.0.0.0", true},
 		{"invalid bare IPv4 prefix 2", "257.0.0.0/24", true},
 
