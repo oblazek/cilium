@@ -216,8 +216,6 @@ func defaultLabelPrefixCfg() *labelPrefixCfg {
 	expressions := []string{
 		reservedLabelsPattern,                                           // include all reserved labels
 		regexp.QuoteMeta(k8sConst.PodNamespaceLabel),                    // include io.kubernetes.pod.namespace
-		regexp.QuoteMeta(k8sConst.PodNamespaceMetaLabels),               // include all namespace labels
-		regexp.QuoteMeta(k8sConst.AppKubernetes),                        // include app.kubernetes.io
 		`!io\.kubernetes`,                                               // ignore all other io.kubernetes labels
 		`!kubernetes\.io`,                                               // ignore all other kubernetes.io labels
 		"!" + regexp.QuoteMeta(k8sConst.StatefulSetPodNameLabel),        // ignore statefulset.kubernetes.io/pod-name label
