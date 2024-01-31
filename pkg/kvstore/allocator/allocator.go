@@ -15,6 +15,7 @@ import (
 	"github.com/cilium/cilium/pkg/allocator"
 	"github.com/cilium/cilium/pkg/idpool"
 	"github.com/cilium/cilium/pkg/kvstore"
+	"github.com/cilium/cilium/pkg/labels"
 	"github.com/cilium/cilium/pkg/logging"
 	"github.com/cilium/cilium/pkg/logging/logfields"
 	"github.com/cilium/cilium/pkg/rate"
@@ -445,6 +446,11 @@ func (k *kvstoreBackend) RunGC(
 	max := uint64(maxID)
 	reasonOutOfRange := "out of local cluster identity range [" + strconv.FormatUint(min, 10) + "," + strconv.FormatUint(max, 10) + "]"
 
+	labelFilter := map[string]string{}
+	if val := ctx.Value(allocator.GCLabelFilterKey("gcLabelFilter")); val != nil {
+		labelFilter = val.(map[string]string)
+	}
+
 	// iterate over /id/
 	for key, v := range allocated {
 		// if k.lockless {
@@ -468,6 +474,28 @@ func (k *kvstoreBackend) RunGC(
 					fieldKey: key,
 					"reason": reasonOutOfRange,
 				}).Debug("Skipping this key")
+				continue
+			}
+		}
+
+		if labelFilter != nil {
+			// Make sure the identity corresponds to the label filter
+			//
+			// All of identity labels must match all of corresponding key/value pairs present in filter.
+			// E.g.:
+			//   identityLabels = {"calico:io.cilium.k8s.namespace.labels.scif.cz/realm": "sandbox", "calico:io.cilium.k8s.policy.cluster": "os1.ko", "calico:io.kubernetes.pod.namespace": "hry-dev"}
+			//   matches
+			//   labelFilter = {"calico:io.cilium.k8s.policy.cluster": "os1.ko"}
+
+			identityLabels := labels.ParseLabelArrayFromArray(strings.Split(string(v.Data), ";")).StringMap()
+			matched := 0
+			for fk, fv := range labelFilter {
+				if identityLabels[fk] != fv {
+					break
+				}
+				matched += 1
+			}
+			if matched != len(labelFilter) {
 				continue
 			}
 		}

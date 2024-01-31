@@ -33,6 +33,8 @@ const (
 	maxAllocAttempts = 16
 )
 
+type GCLabelFilterKey string
+
 // Allocator is a distributed ID allocator backed by a KVstore. It maps
 // arbitrary keys to identifiers. Multiple users on different cluster nodes can
 // in parallel request the ID for keys and are guaranteed to retrieve the same
@@ -154,6 +156,8 @@ type Allocator struct {
 	// backend is the upstream, shared, backend to which we syncronize local
 	// information
 	backend Backend
+
+	gcLabelFilter map[string]string
 }
 
 // AllocatorOption is the base type for allocator options
@@ -398,6 +402,10 @@ func WithoutGC() AllocatorOption {
 // WithoutAutostart prevents starting the allocator when it is initialized
 func WithoutAutostart() AllocatorOption {
 	return func(a *Allocator) { a.disableAutostart = true }
+}
+
+func (a *Allocator) SetGCLabelFilter(filter map[string]string) {
+	a.gcLabelFilter = filter
 }
 
 // GetEvents returns the events channel given to the allocator when
@@ -841,7 +849,11 @@ func (a *Allocator) Release(ctx context.Context, key AllocatorKey) (lastUse bool
 
 // RunGC scans the kvstore for unused master keys and removes them
 func (a *Allocator) RunGC(rateLimit *rate.Limiter, staleKeysPrevRound map[string]uint64) (map[string]uint64, *GCStats, error) {
-	return a.backend.RunGC(context.TODO(), rateLimit, staleKeysPrevRound, a.min, a.max)
+	// HACK: utilize the context for passing label filter between allocator GC and backend GC
+	// in order to interfaces of functions don't need a change
+	ctx := context.WithValue(context.TODO(), GCLabelFilterKey("gcLabelFilter"), a.gcLabelFilter)
+
+	return a.backend.RunGC(ctx, rateLimit, staleKeysPrevRound, a.min, a.max)
 }
 
 // RunLocksGC scans the kvstore for stale locks and removes them
