@@ -1,16 +1,26 @@
-image: docker.ops.iszn.cz/sklik-devops/ci-scripts:1
-
 stages:
   - check
   - build
 
+image: docker.ops.iszn.cz/sklik-devops/ci-scripts:1
+
+variables:
+  HELM_CHART_PATH: install/kubernetes/cilium
+
 include:
   - project: ultra/SCIF/labrador/gitlab-ci
     file: /definitions/build.yml
-    ref: v2.1
+    ref: v2.2
 
-# check
-# ---------------------------------------------------------------------
+  - project: ultra/SCIF/labrador/gitlab-ci
+    file: /definitions/lint.yml
+    ref: v2.2
+
+helm-syntax-check:
+  stage: check
+  extends: .[lgci]-helm-syntax
+  needs: []
+
 check-helm-values:
   stage: check
   variables:
@@ -23,11 +33,9 @@ check-helm-values:
   only:
     - tags
 
-# build
-# ---------------------------------------------------------------------
 build-helm:
   extends: .[lgci]-build-helm
-  variables:
-    HELM_CHART_PATH: install/kubernetes/cilium
+  needs:
+    - helm-syntax-check
   only:
     - tags
