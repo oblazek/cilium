@@ -361,7 +361,11 @@ func (ipc *IPCache) upsertLocked(
 	if cidrCluster, err = cmtypes.ParsePrefixCluster(ip); err == nil { // CIDR or Node with /32
 		if cidrCluster.IsSingleIP() {
 			if epIdentity, endpointIPFound := ipc.ipToIdentityCache[cidrCluster.AddrCluster().String()]; endpointIPFound {
+				// Endpoint found with the same IP address
+				// 1) cilium in k8s: prefer newIdentity as it has local scoped ID - aka Node object
+				// 2) cilium in openstack (IPAMCalico): keep the epIdentity, shadow the new one
 				if (newIdentity.ID.IsReservedIdentity() || newIdentity.ID.Scope().HasRemoteNodeScope()) && option.Config.IPAM != ipamOption.IPAMCalico {
+					// existing endpoint identity needs to be overriden with the newIdentity ID
 					epIdentity.ID = newIdentity.ID
 					epIdentity.shadowed = true
 					ipc.ipToIdentityCache[cidrCluster.AddrCluster().String()] = epIdentity
@@ -382,6 +386,10 @@ func (ipc *IPCache) upsertLocked(
 			if cidrIdentity, cidrFound := ipc.ipToIdentityCache[cidrClusterStr]; cidrFound {
 				oldHostIP, _ = ipc.getHostIPCache(cidrClusterStr)
 				if cidrIdentity.ID != newIdentity.ID || !oldHostIP.Equal(hostIP) {
+					// CIDR or Node object found with the same IP address (+ /32) as currently handled endpoint
+					// 1) cilium in k8s: prefer existing cidrIdentity as it has local scoped ID - aka Node object or host
+					// 2) cilium in openstack (IPAMCalico): newIdentity (an endpoint one) has precedence,
+					// shadow the existing one (this could be classic cidr as well as Node)
 					if (cidrIdentity.ID.IsReservedIdentity() || cidrIdentity.ID.HasRemoteNodeScope()) && option.Config.IPAM != ipamOption.IPAMCalico {
 						newIdentity.ID = cidrIdentity.ID
 						newIdentity.shadowed = true
