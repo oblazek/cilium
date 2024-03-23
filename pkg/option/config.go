@@ -1224,6 +1224,8 @@ const (
 
 	// BPFEventsTraceEnabled defines the TraceNotification setting for any endpoint
 	BPFEventsTraceEnabled = "bpf-events-trace-enabled"
+
+	EnableXDPTracing = "enable-xdp-tracing"
 )
 
 // Default string arguments
@@ -2497,6 +2499,8 @@ type DaemonConfig struct {
 	// NodeLabels is the list of label prefixes used to determine identity of a node (requires enabling of
 	// EnableNodeSelectorLabels)
 	NodeLabels []string
+
+	XDPTracing bool
 }
 
 var (
@@ -3660,6 +3664,7 @@ func (c *DaemonConfig) Populate(vp *viper.Viper) {
 	c.PolicyCIDRMatchMode = vp.GetStringSlice(PolicyCIDRMatchMode)
 	c.EnableNodeSelectorLabels = vp.GetBool(EnableNodeSelectorLabels)
 	c.NodeLabels = vp.GetStringSlice(NodeLabels)
+	c.XDPTracing = vp.GetBool(EnableXDPTracing)
 }
 
 func (c *DaemonConfig) populateDevices(vp *viper.Viper) {

@@ -1153,6 +1153,9 @@ func InitGlobalFlags(cmd *cobra.Command, vp *viper.Viper) {
 	flags.StringSlice(option.NodeLabels, []string{}, "List of label prefixes used to determine identity of a node (used only when enable-node-selector-labels is enabled)")
 	option.BindEnv(vp, option.NodeLabels)
 
+	flags.Bool(option.EnableXDPTracing, false, "Enable packet tracing for XDP accelerated traffic.")
+	option.BindEnv(vp, option.EnableXDPTracing)
+
 	if err := vp.BindPFlags(flags); err != nil {
 		log.Fatalf("BindPFlags failed: %s", err)
 	}
@@ -1335,6 +1338,7 @@ func initEnv(vp *viper.Viper) {
 
 	option.Config.Opts.SetBool(option.Debug, debugDatapath)
 	option.Config.Opts.SetBool(option.DebugLB, debugDatapath)
+	option.Config.Opts.SetBool(option.XDPTracing, option.Config.XDPTracing)
 	option.Config.Opts.SetBool(option.DropNotify, option.Config.BPFEventsDropEnabled)
 	option.Config.Opts.SetBool(option.PolicyVerdictNotify, option.Config.BPFEventsPolicyVerdictEnabled)
 	option.Config.Opts.SetBool(option.TraceNotify, option.Config.BPFEventsTraceEnabled)
