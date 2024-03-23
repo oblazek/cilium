@@ -27,7 +27,6 @@ func (s *LabelsPrefCfgSuite) TestFilterLabels(c *C) {
 		"id.lizards":                  labels.NewLabel("id.lizards", "web", labels.LabelSourceContainer),
 		"id.lizards.k8s":              labels.NewLabel("id.lizards.k8s", "web", labels.LabelSourceK8s),
 		"io.kubernetes.pod.namespace": labels.NewLabel("io.kubernetes.pod.namespace", "default", labels.LabelSourceContainer),
-		"app.kubernetes.io":           labels.NewLabel("app.kubernetes.io", "my-nginx", labels.LabelSourceContainer),
 		"foo2.lizards.k8s":            labels.NewLabel("foo2.lizards.k8s", "web", labels.LabelSourceK8s),
 	}
 
@@ -56,19 +55,19 @@ func (s *LabelsPrefCfgSuite) TestFilterLabels(c *C) {
 	}
 	allLabels := labels.Map2Labels(allNormalLabels, labels.LabelSourceContainer)
 	filtered, _ := dlpcfg.filterLabels(allLabels)
-	c.Assert(len(filtered), Equals, 2)
+	c.Assert(len(filtered), Equals, 1)
 	allLabels["id.lizards"] = labels.NewLabel("id.lizards", "web", labels.LabelSourceContainer)
 	allLabels["id.lizards.k8s"] = labels.NewLabel("id.lizards.k8s", "web", labels.LabelSourceK8s)
 	filtered, _ = dlpcfg.filterLabels(allLabels)
-	c.Assert(len(filtered), Equals, 4)
+	c.Assert(len(filtered), Equals, 3)
 	// Checking that it does not need to an exact match of "foo", but "foo2" also works since it's not a regex
 	allLabels["foo2.lizards.k8s"] = labels.NewLabel("foo2.lizards.k8s", "web", labels.LabelSourceK8s)
 	filtered, _ = dlpcfg.filterLabels(allLabels)
-	c.Assert(len(filtered), Equals, 5)
+	c.Assert(len(filtered), Equals, 4)
 	// Checking that "foo" only works if it's the prefix of a label
 	allLabels["lizards.foo.lizards.k8s"] = labels.NewLabel("lizards.foo.lizards.k8s", "web", labels.LabelSourceK8s)
 	filtered, _ = dlpcfg.filterLabels(allLabels)
-	c.Assert(len(filtered), Equals, 5)
+	c.Assert(len(filtered), Equals, 4)
 	c.Assert(filtered, checker.DeepEquals, wanted)
 	// Making sure we are deep copying the labels
 	allLabels["id.lizards"] = labels.NewLabel("id.lizards", "web", "I can change this and doesn't affect any one")
@@ -126,12 +125,11 @@ func (s *LabelsPrefCfgSuite) TestDefaultFilterLabels(c *C) {
 
 func (s *LabelsPrefCfgSuite) TestFilterLabelsDocExample(c *C) {
 	wanted := labels.Labels{
-		"io.cilium.k8s.namespace.labels": labels.NewLabel("io.cilium.k8s.namespace.labels", "foo", labels.LabelSourceK8s),
-		"k8s-app-team":                   labels.NewLabel("k8s-app-team", "foo", labels.LabelSourceK8s),
-		"app-production":                 labels.NewLabel("app-production", "foo", labels.LabelSourceK8s),
-		"name-defined":                   labels.NewLabel("name-defined", "foo", labels.LabelSourceK8s),
-		"host":                           labels.NewLabel("host", "", labels.LabelSourceReserved),
-		"io.kubernetes.pod.namespace":    labels.NewLabel("io.kubernetes.pod.namespace", "docker", labels.LabelSourceAny),
+		"k8s-app-team":                labels.NewLabel("k8s-app-team", "foo", labels.LabelSourceK8s),
+		"app-production":              labels.NewLabel("app-production", "foo", labels.LabelSourceK8s),
+		"name-defined":                labels.NewLabel("name-defined", "foo", labels.LabelSourceK8s),
+		"host":                        labels.NewLabel("host", "", labels.LabelSourceReserved),
+		"io.kubernetes.pod.namespace": labels.NewLabel("io.kubernetes.pod.namespace", "docker", labels.LabelSourceAny),
 	}
 
 	err := ParseLabelPrefixCfg([]string{"k8s:io.kubernetes.pod.namespace", "k8s:k8s-app", "k8s:app", "k8s:name"}, []string{}, "")
@@ -145,21 +143,21 @@ func (s *LabelsPrefCfgSuite) TestFilterLabelsDocExample(c *C) {
 	}
 	allLabels := labels.Map2Labels(allNormalLabels, labels.LabelSourceK8s)
 	filtered, _ := dlpcfg.filterLabels(allLabels)
-	c.Assert(len(filtered), Equals, 4)
+	c.Assert(len(filtered), Equals, 3)
 
 	// Reserved labels are included.
 	allLabels["host"] = labels.NewLabel("host", "", labels.LabelSourceReserved)
 	filtered, _ = dlpcfg.filterLabels(allLabels)
-	c.Assert(len(filtered), Equals, 5)
+	c.Assert(len(filtered), Equals, 4)
 
 	// io.kubernetes.pod.namespace=docker matches because the default list has any:io.kubernetes.pod.namespace.
 	allLabels["io.kubernetes.pod.namespace"] = labels.NewLabel("io.kubernetes.pod.namespace", "docker", labels.LabelSourceAny)
 	filtered, _ = dlpcfg.filterLabels(allLabels)
-	c.Assert(len(filtered), Equals, 6)
+	c.Assert(len(filtered), Equals, 5)
 
 	// container:k8s-app-role=foo doesn't match because it doesn't have source k8s.
 	allLabels["k8s-app-role"] = labels.NewLabel("k8s-app-role", "foo", labels.LabelSourceContainer)
 	filtered, _ = dlpcfg.filterLabels(allLabels)
-	c.Assert(len(filtered), Equals, 6)
+	c.Assert(len(filtered), Equals, 5)
 	c.Assert(filtered, checker.DeepEquals, wanted)
 }

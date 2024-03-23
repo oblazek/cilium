@@ -336,7 +336,7 @@ func ParseToCiliumRule(namespace, name string, uid types.UID, r *api.Rule) *api.
 		// Those pods don't have any labels, so they don't have a namespace label either.
 		// Don't add a namespace label to those endpoint selectors, or we wouldn't be
 		// able to match on those pods.
-		if !retRule.EndpointSelector.HasKey(podInitLbl) && namespace != "" {
+		if namespace != "" {
 			var prefix string
 			if option.Config.IPAM == "calico" {
 				prefix = podOpenstackPrefixLbl

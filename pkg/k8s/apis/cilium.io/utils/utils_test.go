@@ -396,7 +396,7 @@ func Test_ParseToCiliumRule(t *testing.T) {
 						IngressCommonRule: api.IngressCommonRule{
 							FromEndpoints: []api.EndpointSelector{
 								api.NewESFromK8sLabelSelector(
-									labels.LabelSourceK8sKeyPrefix,
+									labels.LabelSourceAnyKeyPrefix,
 									&slim_metav1.LabelSelector{
 										MatchExpressions: []slim_metav1.LabelSelectorRequirement{
 											{
