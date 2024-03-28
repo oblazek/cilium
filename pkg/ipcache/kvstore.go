@@ -10,6 +10,7 @@ import (
 	"net/netip"
 	"path"
 	"sort"
+	"strings"
 	"sync"
 
 	"github.com/sirupsen/logrus"
@@ -329,6 +330,15 @@ func (iw *IPIdentityWatcher) OnUpdate(k storepkg.Key) {
 		ip = cmtypes.AnnotateIPCacheKeyWithClusterID(ip, iw.clusterID)
 	}
 
+	src := source.KVStore
+	// standard cilium metadata look like:
+	//"Metadata":"cilium-global:default:scif-worker-monitoring-az1-7544d9cfb8-wfwgb:3281"
+	// bridged metadata look like:
+	//"Metadata":"kube3.ng"
+	metaSplit := strings.Split(ipIDPair.Metadata, ":")
+	if len(metaSplit) == 1 {
+		src = source.Bridge
+	}
 	// There is no need to delete the "old" IP addresses from this
 	// ip ID pair. The only places where the ip ID pair are created
 	// is the clustermesh, where it sends a delete to the KVStore,
@@ -337,7 +347,7 @@ func (iw *IPIdentityWatcher) OnUpdate(k storepkg.Key) {
 	// endpoint is gone.
 	iw.ipcache.Upsert(ip, ipIDPair.HostIP, ipIDPair.Key, k8sMeta, Identity{
 		ID:     peerIdentity,
-		Source: source.KVStore,
+		Source: src,
 	})
 }
 

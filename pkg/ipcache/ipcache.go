@@ -382,7 +382,6 @@ func (ipc *IPCache) upsertLocked(
 			if cidrIdentity, cidrFound := ipc.ipToIdentityCache[cidrClusterStr]; cidrFound {
 				oldHostIP, _ = ipc.getHostIPCache(cidrClusterStr)
 				if cidrIdentity.ID != newIdentity.ID || !oldHostIP.Equal(hostIP) {
-					scopedLog.Info("hmm endpoint, cidrFound")
 					if (cidrIdentity.ID.IsReservedIdentity() || cidrIdentity.ID.HasRemoteNodeScope()) && option.Config.IPAM != ipamOption.IPAMCalico {
 						newIdentity.ID = cidrIdentity.ID
 						newIdentity.shadowed = true
