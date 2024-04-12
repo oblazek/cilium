@@ -790,8 +790,23 @@ func (s *IPCacheTestSuite) TestIPCacheSznMultipleEndpointSourcesShadowing(c *C) 
 	c.Assert(exists, Equals, true)
 	c.Assert(cachedIdentity.ID, Equals, remoteEpIdentity)
 
+	// try to delete endpoint with non-matching identity source
+	// upserted with source.Bridge, deleted with source.KVStore
+	ipc.Delete(endpointIP, source.KVStore)
+	cachedIdentity, exists = ipc.LookupByIP(endpointIP)
+	c.Assert(exists, Equals, false)
+
+	// handle calico: endpoint for the same IP
+	ipc.Upsert(endpointIP, nil, 0, nil, Identity{
+		ID:     remoteEpIdentity,
+		Source: source.Bridge,
+	})
+	cachedIdentity, exists = ipc.LookupByIP(endpointIP)
+	c.Assert(exists, Equals, true)
+
 	// handle openstack: endpoint for the same IP
-	// this should be prefered as clusterID of openstack corresponds with this ID
+	// this should be prefered as KVStore identity source has precedence
+	// over bridged identity
 	ipc.Upsert(endpointIP, nil, 0, nil, Identity{
 		ID:     localEpIdentity,
 		Source: source.KVStore,
@@ -824,12 +839,13 @@ func (s *IPCacheTestSuite) TestIPCacheSznMultipleEndpointSourcesShadowing(c *C) 
 	c.Assert(cachedIdentity.ID, Equals, localEpIdentity)
 }
 
-func (s *IPCacheTestSuite) TestIPCacheSznMultipleEndpointSourcesThirPartyShadowing(c *C) {
+func (s *IPCacheTestSuite) TestIPCacheSznBridgeSourceShadowing(c *C) {
 	endpointIP := "10.0.0.15"
-	localEpIdentity := (identityPkg.NumericIdentity(234041))  // openstack: prefix - corresponds with ClusterID=3
-	remoteEpIdentity := (identityPkg.NumericIdentity(884939)) // calico: prefix
+	//localEpIdentity := (identityPkg.NumericIdentity(234041))   // openstack: prefix - corresponds with ClusterID=3///
+	remoteEpIdentity := (identityPkg.NumericIdentity(884939))  // calico: prefix
+	remoteEpIdentity2 := (identityPkg.NumericIdentity(884940)) // calico: prefix
 	option.Config.IPAM = ipamOption.IPAMCalico
-	option.Config.ClusterID = 4
+	option.Config.ClusterID = 3
 	ipc := IPIdentityCache
 
 	// Assure sane state at start.
@@ -845,37 +861,11 @@ func (s *IPCacheTestSuite) TestIPCacheSznMultipleEndpointSourcesThirPartyShadowi
 	c.Assert(exists, Equals, true)
 	c.Assert(cachedIdentity.ID, Equals, remoteEpIdentity)
 
-	// handle openstack: endpoint for the same IP
-	// this should be prefered as clusterID of openstack corresponds with this ID
 	ipc.Upsert(endpointIP, nil, 0, nil, Identity{
-		ID:     localEpIdentity,
-		Source: source.KVStore,
-	})
-	cachedIdentity, exists = ipc.LookupByIP(endpointIP)
-	c.Assert(exists, Equals, true)
-	c.Assert(cachedIdentity.ID, Equals, localEpIdentity)
-
-	// cleanup
-	ipc.Delete(endpointIP, source.KVStore)
-	_, exists = ipc.LookupByIP(endpointIP)
-	c.Assert(exists, Equals, false)
-
-	// try the opposite, handle openstack: first
-	ipc.Upsert(endpointIP, nil, 0, nil, Identity{
-		ID:     localEpIdentity,
-		Source: source.KVStore,
-	})
-	cachedIdentity, exists = ipc.LookupByIP(endpointIP)
-	c.Assert(exists, Equals, true)
-	c.Assert(cachedIdentity.ID, Equals, localEpIdentity)
-
-	// calico: prefix shouldn't be prefered
-	ipc.Upsert(endpointIP, nil, 0, nil, Identity{
-		ID:     remoteEpIdentity,
+		ID:     remoteEpIdentity2,
 		Source: source.Bridge,
 	})
 	cachedIdentity, exists = ipc.LookupByIP(endpointIP)
 	c.Assert(exists, Equals, true)
-	c.Assert(cachedIdentity.ID, Equals, localEpIdentity)
-
+	c.Assert(cachedIdentity.ID, Equals, remoteEpIdentity2)
 }

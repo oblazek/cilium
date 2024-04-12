@@ -664,7 +664,7 @@ func (ipc *IPCache) DumpToListenerLocked(listener IPIdentityMappingListener) {
 
 // deleteLocked removes the provided IP-to-security-identity mapping
 // from ipc with the assumption that the IPCache's mutex is held.
-func (ipc *IPCache) deleteLocked(ip string, source source.Source) (namedPortsChanged bool) {
+func (ipc *IPCache) deleteLocked(ip string, src source.Source) (namedPortsChanged bool) {
 	scopedLog := log.WithFields(logrus.Fields{
 		logfields.IPAddr: ip,
 	})
@@ -678,9 +678,9 @@ func (ipc *IPCache) deleteLocked(ip string, source source.Source) (namedPortsCha
 		return false
 	}
 
-	if cachedIdentity.Source != source {
+	if cachedIdentity.Source != src && cachedIdentity.Source != source.Bridge {
 		scopedLog.WithField("source", cachedIdentity.Source).
-			Debugf("Skipping delete of identity from source %s", source)
+			Debugf("Skipping delete of identity from source %s", src)
 		metrics.IPCacheErrorsTotal.WithLabelValues(
 			metricTypeDelete, metricErrorOverwrite,
 		).Inc()

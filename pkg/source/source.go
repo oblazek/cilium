@@ -76,7 +76,7 @@ func AllowOverwrite(existing, new Source) bool {
 	// Bridge can be overwritten by kvstore, local state, or
 	// kube-apiserver state.
 	case Bridge:
-		return new == KVStore || new == Local || new == KubeAPIServer
+		return new == KVStore || new == Local || new == KubeAPIServer || new == Bridge
 
 	// Custom-resource state can be overwritten by other CRD, kvstore,
 	// local or kube-apiserver state.
