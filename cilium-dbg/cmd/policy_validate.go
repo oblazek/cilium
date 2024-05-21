@@ -10,7 +10,7 @@ import (
 	"github.com/spf13/cobra"
 )
 
-var policyVerbose bool
+var policyVerbose, softValidation bool
 
 // policyValidateCmd represents the policy_validate command
 var policyValidateCmd = &cobra.Command{
@@ -22,13 +22,22 @@ var policyValidateCmd = &cobra.Command{
 		if ruleList, err := loadPolicy(path); err != nil {
 			Fatalf("Validation of policy %s has failed: %s\n", path, err)
 		} else {
+			var skipped bool
 			for _, r := range ruleList {
-				if err := r.Sanitize(); err != nil {
-					Fatalf("Validation of policy %s has failed: %s\n", path, err)
+				if err, skipped = r.Sanitize(softValidation); err != nil {
+					if !skipped {
+						Fatalf("Validation of policy %s has failed: %s\n", path, err)
+					} else {
+						if policyVerbose {
+							fmt.Printf("Validation of policy %s has been skipped\n", path)
+						}
+					}
 				}
 			}
 			if policyVerbose {
-				fmt.Printf("All policy elements in %s are valid.\n", path)
+				if !skipped {
+					fmt.Printf("All policy elements in %s are valid.\n", path)
+				}
 			}
 
 			if printPolicy {
@@ -46,4 +55,5 @@ func init() {
 	PolicyCmd.AddCommand(policyValidateCmd)
 	policyValidateCmd.Flags().BoolVarP(&printPolicy, "print", "", false, "Print policy after validation")
 	policyValidateCmd.Flags().BoolVarP(&policyVerbose, "verbose", "v", true, "Enable verbose output")
+	policyValidateCmd.Flags().BoolVarP(&softValidation, "soft-validate", "", true, "Enable soft validation, i.e. skip rules that cannot be validated")
 }

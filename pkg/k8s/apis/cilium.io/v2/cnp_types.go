@@ -211,7 +211,7 @@ func (r *CiliumNetworkPolicy) Parse() (api.Rules, error) {
 	}
 
 	if r.Spec != nil {
-		if err := r.Spec.Sanitize(); err != nil {
+		if err, _ := r.Spec.Sanitize(false); err != nil {
 			return nil, NewErrParse(fmt.Sprintf("Invalid CiliumNetworkPolicy spec: %s", err))
 		}
 		if r.Spec.NodeSelector.LabelSelector != nil {
@@ -222,7 +222,7 @@ func (r *CiliumNetworkPolicy) Parse() (api.Rules, error) {
 	}
 	if r.Specs != nil {
 		for _, rule := range r.Specs {
-			if err := rule.Sanitize(); err != nil {
+			if err, _ := rule.Sanitize(false); err != nil {
 				return nil, NewErrParse(fmt.Sprintf("Invalid CiliumNetworkPolicy specs: %s", err))
 
 			}

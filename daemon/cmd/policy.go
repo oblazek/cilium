@@ -620,7 +620,7 @@ func putPolicyHandler(d *Daemon, params PutPolicyParams) middleware.Responder {
 	}
 
 	for _, r := range rules {
-		if err := r.Sanitize(); err != nil {
+		if err, _ := r.Sanitize(false); err != nil {
 			metrics.PolicyChangeTotal.WithLabelValues(metrics.LabelValueOutcomeFail).Inc()
 			return api.Error(PutPolicyFailureCode, err)
 		}

@@ -21,8 +21,10 @@ const (
 
 // Sanitize validates and sanitizes a policy rule. Minor edits such as
 // capitalization of the protocol name are automatically fixed up. More
-// fundamental violations will cause an error to be returned.
-func (r *Rule) Sanitize() error {
+// fundamental violations will cause an error to be returned. The second
+// returned argument is set to true if rule sanitization is skipped. (i.e.
+// inability to validate all fields)
+func (r *Rule) Sanitize(softValidation bool) (error, bool) {
 	// Fill in the default traffic posture of this Rule.
 	// Default posture is per-direction (ingress or egress),
 	// if there is a peer selector for that direction, the
@@ -37,49 +39,49 @@ func (r *Rule) Sanitize() error {
 	}
 
 	if r.EndpointSelector.LabelSelector == nil && r.NodeSelector.LabelSelector == nil {
-		return fmt.Errorf("rule must have one of EndpointSelector or NodeSelector")
+		return fmt.Errorf("rule must have one of EndpointSelector or NodeSelector"), false
 	}
 	if r.EndpointSelector.LabelSelector != nil && r.NodeSelector.LabelSelector != nil {
-		return fmt.Errorf("rule cannot have both EndpointSelector and NodeSelector")
+		return fmt.Errorf("rule cannot have both EndpointSelector and NodeSelector"), false
 	}
 
 	if r.EndpointSelector.LabelSelector != nil {
 		if err := r.EndpointSelector.sanitize(); err != nil {
-			return err
+			return err, false
 		}
 	}
 
 	var hostPolicy bool
 	if r.NodeSelector.LabelSelector != nil {
 		if err := r.NodeSelector.sanitize(); err != nil {
-			return err
+			return err, false
 		}
 		hostPolicy = true
 	}
 
 	for i := range r.Ingress {
-		if err := r.Ingress[i].sanitize(); err != nil {
-			return err
+		if err, skipped := r.Ingress[i].sanitize(softValidation); err != nil {
+			return err, skipped
 		}
 		if hostPolicy {
 			if len(countL7Rules(r.Ingress[i].ToPorts)) > 0 {
-				return fmt.Errorf("host policies do not support L7 rules yet")
+				return fmt.Errorf("host policies do not support L7 rules yet"), false
 			}
 		}
 	}
 
 	for i := range r.Egress {
-		if err := r.Egress[i].sanitize(); err != nil {
-			return err
+		if err, skipped := r.Egress[i].sanitize(softValidation); err != nil {
+			return err, skipped
 		}
 		if hostPolicy {
 			if len(countL7Rules(r.Egress[i].ToPorts)) > 0 {
-				return fmt.Errorf("host policies do not support L7 rules yet")
+				return fmt.Errorf("host policies do not support L7 rules yet"), false
 			}
 		}
 	}
 
-	return nil
+	return nil, false
 }
 
 func countL7Rules(ports []PortRule) map[string]int {
@@ -94,7 +96,7 @@ func countL7Rules(ports []PortRule) map[string]int {
 	return result
 }
 
-func (i *IngressRule) sanitize() error {
+func (i *IngressRule) sanitize(softValidation bool) (error, bool) {
 	l3Members := map[string]int{
 		"FromEndpoints": len(i.FromEndpoints),
 		"FromCIDR":      len(i.FromCIDR),
@@ -113,84 +115,88 @@ func (i *IngressRule) sanitize() error {
 	for m1 := range l3Members {
 		for m2 := range l3Members {
 			if m2 != m1 && l3Members[m1] > 0 && l3Members[m2] > 0 {
-				return fmt.Errorf("Combining %s and %s is not supported yet", m1, m2)
+				return fmt.Errorf("Combining %s and %s is not supported yet", m1, m2), false
 			}
 		}
 	}
 
 	if len(l7Members) > 0 && !option.Config.EnableL7Proxy {
-		return errors.New("L7 policy is not supported since L7 proxy is not enabled")
+		return errors.New("L7 policy is not supported since L7 proxy is not enabled"), false
 	}
 	for member := range l7Members {
 		if l7Members[member] > 0 && !l7IngressSupport[member] {
-			return fmt.Errorf("L7 protocol %s is not supported on ingress yet", member)
+			return fmt.Errorf("L7 protocol %s is not supported on ingress yet", member), false
 		}
 	}
 
 	if len(i.ICMPs) > 0 && !option.Config.EnableICMPRules {
-		return fmt.Errorf("ICMP rules can only be applied when the %q flag is set", option.EnableICMPRules)
+		return fmt.Errorf("ICMP rules can only be applied when the %q flag is set", option.EnableICMPRules), false
 	}
 
 	if len(i.ICMPs) > 0 && len(i.ToPorts) > 0 {
-		return fmt.Errorf("The ICMPs block may only be present without ToPorts. Define a separate rule to use ToPorts.")
+		return fmt.Errorf("The ICMPs block may only be present without ToPorts. Define a separate rule to use ToPorts."), false
 	}
 
 	if len(i.FromNodes) > 0 && !option.Config.EnableNodeSelectorLabels {
-		return fmt.Errorf("FromNodes rules can only be applied when the %q flag is set", option.EnableNodeSelectorLabels)
+		if !softValidation {
+			return fmt.Errorf("FromNodes rules can only be applied when the %q flag is set", option.EnableNodeSelectorLabels), false
+		} else {
+			return fmt.Errorf("FromNodes rules can only be applied when the %q flag is set", option.EnableNodeSelectorLabels), true
+		}
 	}
 
 	for _, es := range i.FromEndpoints {
 		if err := es.sanitize(); err != nil {
-			return err
+			return err, false
 		}
 	}
 
 	for _, es := range i.FromRequires {
 		if err := es.sanitize(); err != nil {
-			return err
+			return err, false
 		}
 	}
 
 	for n := range i.ToPorts {
 		if err := i.ToPorts[n].sanitize(true); err != nil {
-			return err
+			return err, false
 		}
 	}
 
 	for n := range i.ICMPs {
 		if err := i.ICMPs[n].verify(); err != nil {
-			return err
+			return err, false
 		}
 	}
 
 	for _, ns := range i.FromNodes {
 		if err := ns.sanitize(); err != nil {
-			return err
+			return err, false
 		}
 	}
 
 	for n := range i.FromCIDR {
 		if err := i.FromCIDR[n].sanitize(); err != nil {
-			return err
+			return err, false
 		}
 	}
 
 	for n := range i.FromCIDRSet {
 		if err := i.FromCIDRSet[n].sanitize(); err != nil {
-			return err
+			return err, false
 		}
 	}
 
 	for _, fromEntity := range i.FromEntities {
 		_, ok := EntitySelectorMapping[fromEntity]
 		if !ok {
-			return fmt.Errorf("unsupported entity: %s", fromEntity)
+			return fmt.Errorf("unsupported entity: %s", fromEntity), false
 		}
 	}
 
 	i.SetAggregatedSelectors()
 
-	return nil
+	return nil, false
 }
 
 // countNonGeneratedRules counts the number of CIDRRule items which are not
@@ -210,7 +216,7 @@ func countNonGeneratedCIDRRules(s CIDRRuleSlice) int {
 	return n
 }
 
-func (e *EgressRule) sanitize() error {
+func (e *EgressRule) sanitize(softValidation bool) (error, bool) {
 	l3Members := map[string]int{
 		"ToCIDR":      len(e.ToCIDR),
 		"ToCIDRSet":   countNonGeneratedCIDRRules(e.ToCIDRSet),
@@ -241,95 +247,99 @@ func (e *EgressRule) sanitize() error {
 	for m1 := range l3Members {
 		for m2 := range l3Members {
 			if m2 != m1 && l3Members[m1] > 0 && l3Members[m2] > 0 {
-				return fmt.Errorf("Combining %s and %s is not supported yet", m1, m2)
+				return fmt.Errorf("Combining %s and %s is not supported yet", m1, m2), false
 			}
 		}
 	}
 	for member := range l3Members {
 		if l3Members[member] > 0 && len(e.ToPorts) > 0 && !l3DependentL4Support[member] {
-			return fmt.Errorf("Combining %s and ToPorts is not supported yet", member)
+			return fmt.Errorf("Combining %s and ToPorts is not supported yet", member), false
 		}
 	}
 
 	if len(l7Members) > 0 && !option.Config.EnableL7Proxy {
-		return errors.New("L7 policy is not supported since L7 proxy is not enabled")
+		return errors.New("L7 policy is not supported since L7 proxy is not enabled"), false
 	}
 	for member := range l7Members {
 		if l7Members[member] > 0 && !l7EgressSupport[member] {
-			return fmt.Errorf("L7 protocol %s is not supported on egress yet", member)
+			return fmt.Errorf("L7 protocol %s is not supported on egress yet", member), false
 		}
 	}
 
 	if len(e.ICMPs) > 0 && !option.Config.EnableICMPRules {
-		return fmt.Errorf("ICMP rules can only be applied when the %q flag is set", option.EnableICMPRules)
+		return fmt.Errorf("ICMP rules can only be applied when the %q flag is set", option.EnableICMPRules), false
 	}
 
 	if len(e.ICMPs) > 0 && len(e.ToPorts) > 0 {
-		return fmt.Errorf("The ICMPs block may only be present without ToPorts. Define a separate rule to use ToPorts.")
+		return fmt.Errorf("The ICMPs block may only be present without ToPorts. Define a separate rule to use ToPorts."), false
 	}
 
 	if len(e.ToNodes) > 0 && !option.Config.EnableNodeSelectorLabels {
-		return fmt.Errorf("ToNodes rules can only be applied when the %q flag is set", option.EnableNodeSelectorLabels)
+		if !softValidation {
+			return fmt.Errorf("ToNodes rules can only be applied when the %q flag is set", option.EnableNodeSelectorLabels), false
+		} else {
+			return fmt.Errorf("ToNodes rules can only be applied when the %q flag is set", option.EnableNodeSelectorLabels), true
+		}
 	}
 
 	for _, es := range e.ToEndpoints {
 		if err := es.sanitize(); err != nil {
-			return err
+			return err, false
 		}
 	}
 
 	for _, es := range e.ToRequires {
 		if err := es.sanitize(); err != nil {
-			return err
+			return err, false
 		}
 	}
 
 	for i := range e.ToPorts {
 		if err := e.ToPorts[i].sanitize(false); err != nil {
-			return err
+			return err, false
 		}
 	}
 
 	for n := range e.ICMPs {
 		if err := e.ICMPs[n].verify(); err != nil {
-			return err
+			return err, false
 		}
 	}
 
 	for _, ns := range e.ToNodes {
 		if err := ns.sanitize(); err != nil {
-			return err
+			return err, false
 		}
 	}
 
 	for i := range e.ToCIDR {
 		if err := e.ToCIDR[i].sanitize(); err != nil {
-			return err
+			return err, false
 		}
 	}
 	for i := range e.ToCIDRSet {
 		if err := e.ToCIDRSet[i].sanitize(); err != nil {
-			return err
+			return err, false
 		}
 	}
 
 	for _, toEntity := range e.ToEntities {
 		_, ok := EntitySelectorMapping[toEntity]
 		if !ok {
-			return fmt.Errorf("unsupported entity: %s", toEntity)
+			return fmt.Errorf("unsupported entity: %s", toEntity), false
 		}
 	}
 
 	for i := range e.ToFQDNs {
 		err := e.ToFQDNs[i].sanitize()
 		if err != nil {
-			return err
+			return err, false
 		}
 	}
 
 	e.SetAggregatedSelectors()
 
-	return nil
+	return nil, false
 }
 
 func (pr *L7Rules) sanitize(ports []PortProtocol) error {

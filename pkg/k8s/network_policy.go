@@ -244,7 +244,7 @@ func ParseNetworkPolicy(np *slim_networkingv1.NetworkPolicy) (api.Rules, error) 
 		WithIngressRules(ingresses).
 		WithEgressRules(egresses)
 
-	if err := rule.Sanitize(); err != nil {
+	if err, _ := rule.Sanitize(false); err != nil {
 		return nil, err
 	}
 

@@ -395,7 +395,7 @@ func (p *Repository) Add(r api.Rule) (uint64, map[uint16]struct{}, error) {
 	p.Mutex.Lock()
 	defer p.Mutex.Unlock()
 
-	if err := r.Sanitize(); err != nil {
+	if err, _ := r.Sanitize(true); err != nil {
 		return p.GetRevision(), nil, err
 	}
 
@@ -468,7 +468,7 @@ func (p *Repository) LocalEndpointIdentityRemoved(identity *identity.Identity) {
 func (p *Repository) AddList(rules api.Rules) (ruleSlice, uint64) {
 	for i := range rules {
 		// FIXME(GH-31162): Many unit tests provide invalid rules
-		_ = rules[i].Sanitize()
+		_, _ = rules[i].Sanitize(false)
 	}
 	p.Mutex.Lock()
 	defer p.Mutex.Unlock()
@@ -838,7 +838,7 @@ func wildcardRule(lbls labels.LabelArray, ingress bool) *rule {
 	} else {
 		r.EndpointSelector = es
 	}
-	_ = r.Sanitize()
+	_, _ = r.Sanitize(false)
 
 	return r
 }

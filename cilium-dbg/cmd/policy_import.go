@@ -39,8 +39,15 @@ var policyImportCmd = &cobra.Command{
 			}
 
 			for _, r := range ruleList {
-				if err := r.Sanitize(); err != nil {
-					Fatalf("%s", err)
+				if err, skipped := r.Sanitize(softValidation); err != nil {
+					if !skipped {
+						Fatalf("%s", err)
+					} else {
+						if policyVerbose {
+							fmt.Printf("Validation of policy: %s has been skipped.\n", path)
+						}
+					}
+					continue
 				}
 			}
 
@@ -68,5 +75,7 @@ func init() {
 	policyImportCmd.Flags().BoolVarP(&printPolicy, "print", "", false, "Print policy after import")
 	policyImportCmd.Flags().BoolVarP(&replacePolicy, "replace", "", false, "Replace existing policy")
 	policyImportCmd.Flags().StringSliceVarP(&replaceWithLabels, "replace-with-labels", "", []string{}, "Replace existing policies that match given labels")
+	policyImportCmd.Flags().BoolVarP(&softValidation, "soft-validate", "", true, "Enable soft validation, i.e. skip validation of rules that cannot be validated")
+	policyImportCmd.Flags().BoolVarP(&policyVerbose, "verbose", "v", true, "Enable verbose output")
 	command.AddOutputOption(policyImportCmd)
 }
