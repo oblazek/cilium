@@ -146,7 +146,7 @@ rollOutCiliumPods: false
 image:
   override: ~
   repository: "quay.io/cilium/cilium"
-  tag: "v1.15.5"
+  tag: "v1.15.5-szn1"
   pullPolicy: "IfNotPresent"
   # cilium-digest
   digest: ""
@@ -1246,7 +1246,7 @@ hubble:
     image:
       override: ~
       repository: "quay.io/cilium/hubble-relay"
-      tag: "v1.15.5"
+      tag: "v1.15.5-szn1"
        # hubble-relay-digest
       digest: ""
       useDigest: false
@@ -2281,8 +2281,10 @@ envoy:
 # ref: https://docs.cilium.io/en/v1.7/install/upgrade/#configmap-remote-node-identity
 # Deprecated without replacement in 1.15. To be removed in 1.16.
 remoteNodeIdentity: true
+
 # -- Enable/Disable use of node label based identity
 nodeSelectorLabels: false
+
 # -- Enable resource quotas for priority classes used in the cluster.
 resourceQuotas:
   enabled: false
@@ -2514,7 +2516,7 @@ operator:
   image:
     override: ~
     repository: "quay.io/cilium/operator"
-    tag: "v1.15.5"
+    tag: "v1.15.5-szn1"
     # operator-generic-digest
     genericDigest: ""
     # operator-azure-digest
@@ -2818,7 +2820,7 @@ preflight:
   image:
     override: ~
     repository: "quay.io/cilium/cilium"
-    tag: "v1.15.5"
+    tag: "v1.15.5-szn1"
     # cilium-digest
     digest: ""
     useDigest: false
@@ -2980,7 +2982,7 @@ clustermesh:
     image:
       override: ~
       repository: "quay.io/cilium/clustermesh-apiserver"
-      tag: "v1.15.5"
+      tag: "v1.15.5-szn1"
       # clustermesh-apiserver-digest
       digest: ""
       useDigest: false
