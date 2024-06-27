@@ -796,6 +796,12 @@ gatewayAPI:
   # This will automatically set enable-envoy-config as well.
   enabled: false
 
+  gwClass:
+    # -- Enable creation of GatewayClass resource
+    # default value is 'auto' which decides according to presence of gateway.networking.k8s.io/v1/GatewayClass in the cluster
+    # other possible values are 'true' and 'false'
+    create: auto
+
   # -- SecretsNamespace is the namespace in which envoy SDS will retrieve TLS secrets from.
   secretsNamespace:
     # -- Create secrets namespace for Gateway API.
