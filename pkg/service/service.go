@@ -1741,7 +1741,8 @@ func (s *Service) restoreServicesLocked(svcBackendsById map[lb.BackendID]struct{
 			svcBackendsById[backend.ID] = struct{}{}
 		}
 
-		if len(newSVC.backendByHash) > 0 {
+		// There is no way to synchronize backends in standalone L4LB case, so don't block their removal
+		if len(newSVC.backendByHash) > 0 && option.Config.DatapathMode != datapathOpt.DatapathModeLBOnly {
 			// Indicate that these backends were restored from BPF maps,
 			// so that they are not removed until SyncWithK8sFinished()
 			// is executed (if not observed in the meanwhile) to prevent
