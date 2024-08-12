@@ -6,6 +6,7 @@ package pool
 import (
 	"context"
 	"fmt"
+	"strings"
 	"sync"
 	"sync/atomic"
 
@@ -272,6 +273,9 @@ func (m *PeerManager) Status() Status {
 
 func (m *PeerManager) upsert(hp *peerTypes.Peer) {
 	if hp == nil {
+		return
+	}
+	if m.opts.skipRemotePeers && m.opts.localClusterName != strings.Split(hp.Name, "/")[0] {
 		return
 	}
 	m.mu.Lock()

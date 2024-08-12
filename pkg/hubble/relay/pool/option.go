@@ -56,12 +56,22 @@ type options struct {
 	connStatusInterval time.Duration
 	retryTimeout       time.Duration
 	log                logrus.FieldLogger
+	skipRemotePeers    bool
+	localClusterName   string
 }
 
 // WithPeerServiceAddress sets the address of the peer gRPC service.
 func WithPeerServiceAddress(a string) Option {
 	return func(o *options) error {
 		o.peerServiceAddress = a
+		return nil
+	}
+}
+
+func WithSkipRemotePeers(name string) Option {
+	return func(o *options) error {
+		o.skipRemotePeers = true
+		o.localClusterName = name
 		return nil
 	}
 }

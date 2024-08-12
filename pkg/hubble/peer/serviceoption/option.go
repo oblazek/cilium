@@ -8,6 +8,7 @@ type Options struct {
 	MaxSendBufferSize       int
 	WithoutTLSInfo          bool
 	AddressFamilyPreference AddressFamilyPreference
+	LocalClusterName        string
 }
 
 // Option customizes the peer service's configuration.
@@ -54,5 +55,11 @@ func WithoutTLSInfo() Option {
 func WithAddressFamilyPreference(pref AddressFamilyPreference) Option {
 	return func(o *Options) {
 		o.AddressFamilyPreference = pref
+	}
+}
+
+func WithLocalClusterName(name string) Option {
+	return func(o *Options) {
+		o.LocalClusterName = name
 	}
 }

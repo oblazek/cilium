@@ -85,8 +85,8 @@ func New(options ...Option) (*Server, error) {
 		}
 	}
 
-	pm, err := pool.NewPeerManager(
-		registry,
+	var peerOpts []pool.Option
+	peerOpts = append(peerOpts,
 		pool.WithPeerServiceAddress(opts.peerTarget),
 		pool.WithPeerClientBuilder(peerClientBuilder),
 		pool.WithClientConnBuilder(pool.GRPCClientConnBuilder{
@@ -100,6 +100,16 @@ func New(options ...Option) (*Server, error) {
 		}),
 		pool.WithRetryTimeout(opts.retryTimeout),
 		pool.WithLogger(opts.log),
+	)
+	if opts.skipRemotePeers {
+		peerOpts = append(peerOpts,
+			pool.WithSkipRemotePeers(opts.clusterName),
+		)
+	}
+
+	pm, err := pool.NewPeerManager(
+		registry,
+		peerOpts...,
 	)
 	if err != nil {
 		return nil, err

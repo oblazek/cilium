@@ -36,6 +36,7 @@ type options struct {
 	clientTLSConfig        certloader.ClientConfigBuilder
 	clusterName            string
 	insecureClient         bool
+	skipRemotePeers        bool
 	observerOptions        []observer.Option
 	grpcMetrics            *grpc_prometheus.ServerMetrics
 	grpcUnaryInterceptors  []grpc.UnaryServerInterceptor
@@ -221,6 +222,13 @@ func WithGRPCStreamInterceptor(interceptors ...grpc.StreamServerInterceptor) Opt
 func WithGRPCUnaryInterceptor(interceptors ...grpc.UnaryServerInterceptor) Option {
 	return func(o *options) error {
 		o.grpcUnaryInterceptors = append(o.grpcUnaryInterceptors, interceptors...)
+		return nil
+	}
+}
+
+func WithSkipRemotePeers(skipRemotePeers bool) Option {
+	return func(o *options) error {
+		o.skipRemotePeers = skipRemotePeers
 		return nil
 	}
 }

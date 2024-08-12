@@ -37,6 +37,7 @@ const (
 	keyHealthListenAddress     = "health-listen-address"
 	keyMetricsListenAddress    = "metrics-listen-address"
 	keyPeerService             = "peer-service"
+	keySkipRemotePeers         = "skip-remote-peers"
 	keySortBufferMaxLen        = "sort-buffer-len-max"
 	keySortBufferDrainTimeout  = "sort-buffer-drain-timeout"
 	keyTLSHubbleClientCertFile = "tls-hubble-client-cert-file"
@@ -180,6 +181,9 @@ func New(vp *viper.Viper) *cobra.Command {
 		false,
 		"Disable TLS for the server and allow clients to connect over plaintext.",
 	)
+	flags.Bool(
+		keySkipRemotePeers, false, "Skip remote peers and connect only to local cluster nodes.",
+	)
 	vp.BindPFlags(flags)
 
 	return cmd
@@ -192,6 +196,7 @@ func runServe(vp *viper.Viper) error {
 	logger := logging.DefaultLogger.WithField(logfields.LogSubsys, "hubble-relay")
 
 	opts := []server.Option{
+		server.WithSkipRemotePeers(vp.GetBool(keySkipRemotePeers)),
 		server.WithLocalClusterName(vp.GetString(keyClusterName)),
 		server.WithDialTimeout(vp.GetDuration(keyDialTimeout)),
 		server.WithPeerTarget(vp.GetString(keyPeerService)),
