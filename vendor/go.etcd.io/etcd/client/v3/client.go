@@ -277,7 +277,7 @@ func (c *Client) getToken(ctx context.Context) error {
 // of the provided endpoint determines the scheme used for all endpoints of the client connection.
 func (c *Client) dialWithBalancer(dopts ...grpc.DialOption) (*grpc.ClientConn, error) {
 	creds := c.credentialsForEndpoint(c.Endpoints()[0])
-	opts := append(dopts, grpc.WithResolvers(c.resolver), grpc.FailOnNonTempDialError(false))
+	opts := append(dopts, grpc.WithResolvers(c.resolver))
 	return c.dial(creds, opts...)
 }
 
@@ -390,6 +390,7 @@ func newClient(cfg *Config) (*Client, error) {
 			return nil, fmt.Errorf("gRPC message recv limit (%d bytes) must be greater than send limit (%d bytes)", cfg.MaxCallRecvMsgSize, cfg.MaxCallSendMsgSize)
 		}
 		callOpts := []grpc.CallOption{
+			grpc.WaitForReady(false),
 			defaultMaxCallSendMsgSize,
 			defaultMaxCallRecvMsgSize,
 		}
